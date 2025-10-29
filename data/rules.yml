@@ -1,0 +1,12 @@
+version: "3.1"
+
+rules:
+- rule: Cumprimentar sempre
+  steps:
+  - intent: cumprimentar
+  - action: utter_cumprimentar
+
+- rule: Despedir sempre
+  steps:
+  - intent: despedir
+  - action: utter_despedir

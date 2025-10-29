@@ -1,0 +1,52 @@
+version: "3.1"
+
+nlu:
+- intent: cumprimentar
+  examples: |
+    - oi
+    - olá
+    - bom dia
+    - boa tarde
+    - hey
+    - opa
+    - e aí
+
+- intent: despedir
+  examples: |
+    - tchau
+    - até logo
+    - até mais
+    - flw
+    - valeu
+
+- intent: explicar_diversidade_alfa
+  examples: |
+    - o que é diversidade alfa?
+    - explica diversidade alfa
+    - como interpretar shannon
+    - índice de simpson
+    - diversidade dentro das amostras
+    - não entendi observed features
+    - o que significa diversidade alfa
+    - explica o índice shannon
+
+- intent: explicar_diversidade_beta
+  examples: |
+    - o que é diversidade beta?
+    - explica diversidade beta
+    - como interpretar pcoa
+    - unifrac
+    - bray curtis
+    - diferença entre amostras
+    - diversidade entre grupos
+    - como as amostras se relacionam
+
+- intent: mostrar_taxonomia
+  examples: |
+    - mostra taxonomia
+    - composição taxonômica
+    - quais grupos foram encontrados
+    - classificação taxonômica
+    - quais microrganismos
+    - lista os filos
+    - quais gêneros

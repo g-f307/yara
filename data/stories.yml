@@ -1,0 +1,18 @@
+version: "3.1"
+
+stories:
+- story: conversa básica sobre diversidade
+  steps:
+  - intent: cumprimentar
+  - action: utter_cumprimentar
+  - intent: explicar_diversidade_alfa
+  - action: action_explicar_diversidade_alfa
+  - intent: despedir
+  - action: utter_despedir
+
+- story: perguntas sobre taxonomia
+  steps:
+  - intent: mostrar_taxonomia
+  - action: action_mostrar_taxonomia
+  - intent: explicar_diversidade_beta
+  - action: action_explicar_diversidade_beta

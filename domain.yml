@@ -1,0 +1,24 @@
+version: "3.1"
+
+intents:
+  - cumprimentar
+  - despedir
+  - explicar_diversidade_alfa
+  - explicar_diversidade_beta
+  - mostrar_taxonomia
+
+responses:
+  utter_cumprimentar:
+  - text: "Olá! Sou a YARA 🧬, sua assistente para análise QIIME 2. Como posso ajudar?"
+  
+  utter_despedir:
+  - text: "Até logo! Qualquer dúvida sobre análises, estou aqui. 👋"
+
+actions:
+  - action_explicar_diversidade_alfa
+  - action_explicar_diversidade_beta
+  - action_mostrar_taxonomia
+
+session_config:
+  session_expiration_time: 60
+  carry_over_slots_to_new_session: true

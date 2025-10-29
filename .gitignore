@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Rasa
+models/
+.rasa/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+
+# Dados
+data/qiime2/
+*.qza
+*.qzv
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Credenciais
+.env
+credentials.yml
