@@ -10,3 +10,8 @@ rules:
   steps:
   - intent: despedir
   - action: utter_despedir
+
+- rule: Responder à listagem de dados
+  steps:
+  - intent: listar_dados_disponiveis
+  - action: action_listar_dados_disponiveis

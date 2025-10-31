@@ -23,12 +23,20 @@ nlu:
   examples: |
     - o que é diversidade alfa?
     - explica diversidade alfa
-    - como interpretar shannon
-    - índice de simpson
+    - O que é diversidade alfa?
+    - me explica diversidade alfa
+    - como interpretar o índice de shannon
+    - o que é o índice de simpson
     - diversidade dentro das amostras
     - não entendi observed features
     - o que significa diversidade alfa
     - explica o índice shannon
+    - fala sobre diversidade alfa
+    - diversidade alfa
+    - shannon
+    - simpson
+    - chao1
+    - faith pd
 
 - intent: explicar_diversidade_beta
   examples: |
@@ -50,3 +58,12 @@ nlu:
     - quais microrganismos
     - lista os filos
     - quais gêneros
+
+- intent: listar_dados_disponiveis
+  examples: |
+    - Quais dados tenho disponíveis?
+    - Quais dados possuo?
+    - lista meus arquivos
+    - o que tem na pasta data?
+    - quais dados eu carreguei?
+    - dados disponíveis
