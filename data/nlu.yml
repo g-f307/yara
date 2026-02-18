@@ -67,3 +67,56 @@ nlu:
     - o que tem na pasta data?
     - quais dados eu carreguei?
     - dados disponíveis
+
+- intent: analisar_rarefacao
+  examples: |
+    - analisa rarefação
+    - curva de rarefação
+    - rarefação
+    - o sequenciamento foi suficiente?
+    - as curvas atingiram plateau?
+    - qual profundidade usar?
+    - profundidade de amostragem
+    - saturação das amostras
+    - curvas de amostragem
+    - explica rarefação
+    - o que é rarefação
+
+- intent: exportar_relatorio
+  examples: |
+    - exporta relatório
+    - gera relatório
+    - cria relatório
+    - quero um relatório
+    - exportar resultados
+    - gerar pdf
+    - salvar análise
+    - exportar em html
+    - criar documento
+    - relatório completo
+
+- intent: comparar_grupos
+  examples: |
+    - comparar grupos
+    - diferença entre grupos
+    - testar grupos
+    - permanova
+    - comparação estatística
+    - grupos são diferentes?
+    - teste estatístico
+    - comparar tratamentos
+    - diferença significativa
+    - análise estatística
+
+- intent: mostrar_grupos_taxonomicos
+  examples: |
+    - quais os grupos mais abundantes
+    - grupos taxonômicos
+    - filos mais comuns
+    - táxons abundantes
+    - principais microrganismos
+    - top filos
+    - organismos dominantes
+    - composição microbiana
+    - quais bactérias
+    - grupos predominantes

@@ -70,8 +70,8 @@ O YARA atualmente responde sobre:
 - ✅ **Diversidade Alfa** (Shannon, Simpson, Observed Features)
 - ✅ **Diversidade Beta** (PCoA, UniFrac, Bray-Curtis)
 - ✅ **Taxonomia** (Classificação hierárquica)
-- 🚧 **Rarefação** (em desenvolvimento)
-- 🚧 **Análises estatísticas** (em desenvolvimento)
+- ✅ **Rarefação** (Curvas de amostragem e saturação)
+- ✅ **Análises estatísticas** (Kruskal-Wallis e Mann-Whitney)
 
 ---
 

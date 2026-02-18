@@ -16,3 +16,47 @@ stories:
   - action: action_mostrar_taxonomia
   - intent: explicar_diversidade_beta
   - action: action_explicar_diversidade_beta
+
+
+- story: análise de rarefação
+  steps:
+  - intent: cumprimentar
+  - action: utter_cumprimentar
+  - intent: analisar_rarefacao
+  - action: action_analisar_rarefacao
+
+- story: exportar relatório completo
+  steps:
+  - intent: listar_dados_disponiveis
+  - action: action_listar_dados_disponiveis
+  - intent: exportar_relatorio
+  - action: action_exportar_relatorio
+
+- story: análise taxonômica detalhada
+  steps:
+  - intent: mostrar_taxonomia
+  - action: action_mostrar_taxonomia
+  - intent: mostrar_grupos_taxonomicos
+  - action: action_mostrar_grupos_taxonomicos
+
+- story: comparação entre grupos
+  steps:
+  - intent: comparar_grupos
+  - action: action_comparar_grupos
+  - intent: explicar_diversidade_beta
+  - action: action_explicar_diversidade_beta
+
+- story: fluxo completo de análise
+  steps:
+  - intent: cumprimentar
+  - action: utter_cumprimentar
+  - intent: listar_dados_disponiveis
+  - action: action_listar_dados_disponiveis
+  - intent: explicar_diversidade_alfa
+  - action: action_explicar_diversidade_alfa
+  - intent: analisar_rarefacao
+  - action: action_analisar_rarefacao
+  - intent: exportar_relatorio
+  - action: action_exportar_relatorio
+  - intent: despedir
+  - action: utter_despedir

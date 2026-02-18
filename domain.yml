@@ -7,6 +7,10 @@ intents:
   - explicar_diversidade_beta
   - mostrar_taxonomia
   - listar_dados_disponiveis
+  - analisar_rarefacao
+  - exportar_relatorio
+  - comparar_grupos
+  - mostrar_grupos_taxonomicos
 
 responses:
   utter_cumprimentar:
@@ -21,6 +25,10 @@ actions:
   - action_mostrar_taxonomia
   - action_listar_dados_disponiveis  
   - action_default_fallback
+  - action_analisar_rarefacao
+  - action_exportar_relatorio
+  - action_comparar_grupos
+  - action_mostrar_grupos_taxonomicos
 
 session_config:
   session_expiration_time: 60

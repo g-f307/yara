@@ -15,3 +15,43 @@ rules:
   steps:
   - intent: listar_dados_disponiveis
   - action: action_listar_dados_disponiveis
+
+- rule: Explicar diversidade alfa
+  steps:
+  - intent: explicar_diversidade_alfa
+  - action: action_explicar_diversidade_alfa
+
+- rule: Explicar diversidade beta
+  steps:
+  - intent: explicar_diversidade_beta
+  - action: action_explicar_diversidade_beta
+
+- rule: Mostrar taxonomia
+  steps:
+  - intent: mostrar_taxonomia
+  - action: action_mostrar_taxonomia
+
+- rule: Analisar rarefação
+  steps:
+  - intent: analisar_rarefacao
+  - action: action_analisar_rarefacao
+
+- rule: Exportar relatório
+  steps:
+  - intent: exportar_relatorio
+  - action: action_exportar_relatorio
+
+- rule: Comparar grupos
+  steps:
+  - intent: comparar_grupos
+  - action: action_comparar_grupos
+
+- rule: Mostrar grupos taxonômicos
+  steps:
+  - intent: mostrar_grupos_taxonomicos
+  - action: action_mostrar_grupos_taxonomicos
+
+- rule: Fallback quando não entende
+  steps:
+  - intent: nlu_fallback
+  - action: action_default_fallback

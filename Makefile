@@ -1,5 +1,7 @@
 .PHONY: help train shell actions test clean install
 
+PYTHON=/home/gf307/miniconda3/envs/yara_rasa/bin/python
+
 help:
 	@echo "🧬 YARA - Comandos Disponíveis"
 	@echo ""
@@ -13,23 +15,23 @@ help:
 
 install:
 	@echo "📦 Instalando dependências..."
-	pip install -r requirements.txt
+	$(PYTHON) -m pip install -r requirements.txt
 
 train:
 	@echo "🎓 Treinando modelo..."
-	rasa train
+	$(PYTHON) -m rasa train
 
 shell:
 	@echo "💬 Iniciando chat..."
-	rasa shell
+	$(PYTHON) -m rasa shell
 
 actions:
 	@echo "⚡ Iniciando servidor de actions..."
-	rasa run actions
+	$(PYTHON) -m rasa run actions
 
 test:
 	@echo "🧪 Testando modelo..."
-	rasa test
+	$(PYTHON) -m rasa test
 
 clean:
 	@echo "🧹 Limpando cache..."

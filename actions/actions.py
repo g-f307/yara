@@ -451,3 +451,338 @@ __all__ = [
     'ActionListarDadosDisponiveis',
     'ActionDefaultFallback'
 ]
+
+
+class ActionAnalisarRarefacao(Action):
+    """Action para análise de curvas de rarefação"""
+    
+    def name(self) -> Text:
+        return "action_analisar_rarefacao"
+    
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+        
+        try:
+            from actions.utils.rarefaction_analyzer import (
+                RarefactionAnalyzer,
+                load_rarefaction_data,
+                analyze_rarefaction_file
+            )
+            
+            # Procurar arquivo de rarefação
+            data_path = get_data_path()
+            rarefaction_files = list(data_path.glob("*rarefaction*.tsv")) + \
+                              list(data_path.glob("*rarefacao*.tsv"))
+            
+            if not rarefaction_files:
+                mensagem = """📊 **Análise de Rarefação**
+
+❌ Nenhum arquivo de rarefação encontrado.
+
+**Como adicionar:**
+1. Exporte curvas de rarefação do QIIME 2
+2. Salve em `data/qiime2/rarefaction.tsv`
+3. Pergunte novamente!
+
+**O que é rarefação?**
+Curvas de rarefação mostram se o sequenciamento foi suficiente para capturar
+a diversidade microbiana da amostra. Uma curva que atinge um "plateau" indica
+que a maioria das espécies foi detectada."""
+                
+                dispatcher.utter_message(text=mensagem)
+                return []
+            
+            # Analisar primeiro arquivo encontrado
+            results = analyze_rarefaction_file(str(rarefaction_files[0]))
+            
+            # Gerar mensagem com interpretação
+            mensagem = results['interpretation']
+            
+            dispatcher.utter_message(text=mensagem)
+            
+        except Exception as e:
+            print(f"Erro na análise de rarefação: {e}")
+            mensagem = """⚠️ Erro ao analisar rarefação.
+
+Verifique se o arquivo está no formato correto (TSV do QIIME 2)."""
+            dispatcher.utter_message(text=mensagem)
+        
+        return []
+
+
+class ActionExportarRelatorio(Action):
+    """Action para exportar relatório em diferentes formatos"""
+    
+    def name(self) -> Text:
+        return "action_exportar_relatorio"
+    
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+        
+        try:
+            from actions.utils.report_generator import create_comprehensive_report
+            
+            # Coletar todas as análises disponíveis
+            analyses = {}
+            
+            # Diversidade Alfa
+            if check_data_available('alpha'):
+                df = load_alpha_diversity_data()
+                if df is not None:
+                    stats = df.describe().to_dict()
+                    analyses['alpha'] = f"Análise de {len(df)} amostras com métricas: {', '.join(df.columns)}"
+            
+            # Diversidade Beta
+            if check_data_available('beta'):
+                analyses['beta'] = "Análise de distâncias entre amostras disponível"
+            
+            # Taxonomia
+            if check_data_available('taxonomy'):
+                analyses['taxonomy'] = "Classificação taxonômica disponível"
+            
+            if not analyses:
+                mensagem = """📄 **Exportar Relatório**
+
+❌ Nenhum dado disponível para gerar relatório.
+
+Adicione dados em `data/qiime2/` e tente novamente!"""
+                dispatcher.utter_message(text=mensagem)
+                return []
+            
+            # Gerar relatório em Markdown
+            md_path = create_comprehensive_report(analyses, output_format="markdown")
+            
+            # Gerar relatório em HTML
+            html_path = create_comprehensive_report(analyses, output_format="html")
+            
+            mensagem = f"""📄 **Relatórios Gerados com Sucesso!**
+
+✅ Markdown: `{md_path}`
+✅ HTML: `{html_path}`
+
+**Conteúdo incluído:**
+"""
+            for key in analyses.keys():
+                mensagem += f"• {key.title()}\n"
+            
+            mensagem += "\n💡 Abra os arquivos para visualizar os resultados completos!"
+            
+            dispatcher.utter_message(text=mensagem)
+            
+        except Exception as e:
+            print(f"Erro ao exportar relatório: {e}")
+            mensagem = """⚠️ Erro ao gerar relatório.
+
+Verifique os logs para mais detalhes."""
+            dispatcher.utter_message(text=mensagem)
+        
+        return []
+
+
+class ActionCompararGrupos(Action):
+    """Action para comparar diversidade entre grupos"""
+    
+    def name(self) -> Text:
+        return "action_comparar_grupos"
+    
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+        
+        # Verificar se há dados para análise
+        data_path = get_data_path()
+        metadata_file = data_path / "metadata.tsv"
+        alpha_file = data_path / "diversidade_alfa.tsv"
+        
+        if metadata_file.exists() and alpha_file.exists():
+            try:
+                from actions.utils.statistics import calculate_kruskal_wallis, get_group_stats
+                
+                # Carregar dados
+                metadata = pd.read_csv(metadata_file, sep='\t')
+                alpha = pd.read_csv(alpha_file, sep='\t', index_col=0)
+                
+                # Merge dados
+                # Assumindo que o índice do alpha é o ID da amostra
+                if 'sample-id' in metadata.columns:
+                    metadata.set_index('sample-id', inplace=True)
+                
+                # Juntar (inner join para garantir que apenas amostras em ambos sejam usadas)
+                df_full = alpha.join(metadata, how='inner')
+                
+                if df_full.empty:
+                    dispatcher.utter_message(text="⚠️ Erro: Amostras do metadata não correspondem aos dados de diversidade.")
+                    return []
+                
+                # Identificar coluna de grupos (procurar por 'grupo', 'group', 'treatment', etc)
+                group_col = None
+                for col in df_full.columns:
+                    if col.lower() in ['grupo', 'group', 'treatment', 'tratamento', 'class']:
+                        group_col = col
+                        break
+                
+                if not group_col:
+                    dispatcher.utter_message(text="⚠️ Não encontrei uma coluna de grupos no metadata (ex: 'grupo', 'tratamento').")
+                    return []
+                
+                # Escolher métrica (padrão: Shannon)
+                metric = 'Shannon'
+                if metric not in df_full.columns:
+                    # Tentar achar outra
+                    for col in df_full.columns:
+                        if col.lower() in ['shannon', 'simpson', 'chao1', 'observed_features']:
+                            metric = col
+                            break
+                            
+                # Executar análise
+                mensagem = f"📊 **Análise Estatística - {metric} por {group_col}**\n\n"
+                
+                # 1. Estatísticas Descritivas
+                mensagem += get_group_stats(df_full, group_col, metric)
+                mensagem += "\n"
+                
+                # 2. Teste Estatístico
+                groups = df_full[group_col].unique()
+                if len(groups) >= 2:
+                    result = calculate_kruskal_wallis(df_full, group_col, metric)
+                    
+                    if result['success']:
+                        mensagem += f"**Teste de Kruskal-Wallis:**\n"
+                        mensagem += f"Statistic={result['statistic']:.4f}, p-value={result['p_value']:.4f}\n\n"
+                        mensagem += result['interpretation']
+                    else:
+                        mensagem += f"⚠️ {result['message']}"
+                else:
+                    mensagem += "⚠️ Menos de 2 grupos encontrados para comparação."
+                
+                dispatcher.utter_message(text=mensagem)
+                return []
+                
+            except Exception as e:
+                print(f"Erro na análise estatística: {e}")
+                # Fallback para mensagem de ajuda
+        
+        # Mensagem educacional (fallback)
+        mensagem = """📊 **Comparação Entre Grupos**
+
+Para comparar grupos, você precisa:
+
+**1. Arquivo de Metadata**
+Crie um arquivo `metadata.tsv` com:
+- Coluna 1: sample-id (IDs das amostras)
+- Outras colunas: grupos, tratamentos, etc.
+
+Exemplo:
+```
+sample-id    grupo    local
+amostra1     controle    floresta
+amostra2     tratamento  floresta
+amostra3     controle    rio
+```
+
+**2. Testes Estatísticos Disponíveis**
+• **PERMANOVA**: testa diferenças na composição beta
+• **Kruskal-Wallis**: compara diversidade alfa entre grupos
+• **Mann-Whitney**: compara dois grupos
+
+**3. Como usar**
+Após adicionar metadata, pergunte:
+• "Comparar grupo controle com tratamento"
+• "Testar diferença entre locais"
+• "Fazer PERMANOVA"
+
+💡 **Dica:** Certifique-se que os sample-ids no metadata
+correspondem aos IDs nos seus dados QIIME 2!"""
+        
+        dispatcher.utter_message(text=mensagem)
+        return []
+
+
+class ActionMostrarGruposTaxonomicos(Action):
+    """Action para mostrar grupos taxonômicos mais abundantes"""
+    
+    def name(self) -> Text:
+        return "action_mostrar_grupos_taxonomicos"
+    
+    def run(self, dispatcher: CollectingDispatcher,
+            tracker: Tracker,
+            domain: Dict[Text, Any]) -> List[Dict[Text, Any]]:
+        
+        try:
+            # Procurar arquivo de taxonomia
+            data_path = get_data_path()
+            taxonomy_files = list(data_path.glob("*taxonomy*.tsv")) + \
+                           list(data_path.glob("*taxa*.tsv"))
+            
+            if not taxonomy_files:
+                mensagem = """🦠 **Grupos Taxonômicos**
+
+❌ Nenhum arquivo de taxonomia encontrado.
+
+Adicione `taxonomy.tsv` em `data/qiime2/` e tente novamente!"""
+                dispatcher.utter_message(text=mensagem)
+                return []
+            
+            # Carregar taxonomia
+            df = pd.read_csv(taxonomy_files[0], sep='\t')
+            
+            mensagem = f"""🦠 **Composição Taxonômica**
+
+📊 Total de features: **{len(df)}**
+
+"""
+            
+            # Tentar extrair filos mais comuns
+            if 'Taxon' in df.columns:
+                # Parse básico de filos
+                phyla = []
+                for tax_string in df['Taxon']:
+                    if pd.notna(tax_string) and 'p__' in tax_string:
+                        parts = tax_string.split(';')
+                        for part in parts:
+                            if 'p__' in part:
+                                phylum = part.split('__')[1].strip()
+                                if phylum:
+                                    phyla.append(phylum)
+                                break
+                
+                if phyla:
+                    from collections import Counter
+                    phylum_counts = Counter(phyla)
+                    top_phyla = phylum_counts.most_common(10)
+                    
+                    mensagem += "**Top 10 Filos Mais Abundantes:**\n\n"
+                    for i, (phylum, count) in enumerate(top_phyla, 1):
+                        percentage = (count / len(df)) * 100
+                        mensagem += f"{i}. **{phylum}**: {count} features ({percentage:.1f}%)\n"
+                else:
+                    mensagem += "⚠️ Não foi possível extrair informações de filos\n"
+            
+            mensagem += "\n💡 Use 'exportar relatório' para análise completa!"
+            
+            dispatcher.utter_message(text=mensagem)
+            
+        except Exception as e:
+            print(f"Erro ao mostrar grupos taxonômicos: {e}")
+            mensagem = """⚠️ Erro ao processar taxonomia.
+
+Verifique o formato do arquivo."""
+            dispatcher.utter_message(text=mensagem)
+        
+        return []
+
+
+# Atualizar lista de actions exportadas
+__all__ = [
+    'ActionExplicarDiversidadeAlfa',
+    'ActionExplicarDiversidadeBeta',
+    'ActionMostrarTaxonomia',
+    'ActionListarDadosDisponiveis',
+    'ActionDefaultFallback',
+    'ActionAnalisarRarefacao',
+    'ActionExportarRelatorio',
+    'ActionCompararGrupos',
+    'ActionMostrarGruposTaxonomicos'
+]
