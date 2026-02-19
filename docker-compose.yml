@@ -1,0 +1,29 @@
+services:
+  # ── Backend FastAPI ──────────────────────────────
+  backend:
+    build: ./backend
+    container_name: yara-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./data/qiime2:/app/data/qiime2
+    environment:
+      - STORAGE_PATH=/app/uploads
+    restart: unless-stopped
+
+  # ── Frontend Next.js ─────────────────────────────
+  frontend:
+    build: ./frontend
+    container_name: yara-frontend
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NEXT_PUBLIC_PYTHON_CORE_URL=http://backend:8000
+    depends_on:
+      - backend
+    restart: unless-stopped

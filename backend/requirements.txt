@@ -1,0 +1,21 @@
+# FastAPI
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# Análise científica
+pandas>=2.1.0
+numpy>=1.25.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+scikit-bio>=0.6.0
+
+# Visualização (server-side specs)
+plotly>=5.18.0
+
+# Relatórios
+reportlab>=4.0.0
+python-docx>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
