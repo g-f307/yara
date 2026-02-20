@@ -23,7 +23,7 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      - NEXT_PUBLIC_PYTHON_CORE_URL=http://backend:8000
+      - PYTHON_CORE_URL=http://backend:8000
     depends_on:
       - backend
     restart: unless-stopped

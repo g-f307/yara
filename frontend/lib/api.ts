@@ -7,8 +7,10 @@
  * e fallback para localhost:8000 em desenvolvimento.
  */
 
-const API_BASE =
-    process.env.NEXT_PUBLIC_PYTHON_CORE_URL ?? "http://localhost:8000";
+const isServer = typeof window === "undefined";
+const API_BASE = isServer
+    ? (process.env.PYTHON_CORE_URL ?? "http://localhost:8000")
+    : "/api/core";
 
 interface ApiResponse<T = unknown> {
     data: T;
