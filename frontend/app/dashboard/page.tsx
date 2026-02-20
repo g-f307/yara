@@ -1,13 +1,11 @@
-"use client"
-
 import Link from "next/link"
-import { useTheme } from "next-themes"
-import { Plus, FileText, FlaskConical, Sun, Moon } from "lucide-react"
+import { Plus, FileText, FlaskConical } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { YaraLogo } from "@/components/yara-logo"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { mockProjects } from "@/lib/mock-data"
+import { getUserProjects } from "@/lib/actions"
+import { ThemeToggle } from "@/components/theme-toggle" // We need to extract theme toggle to a client component
 
 const fileTypeColors: Record<string, string> = {
   ".qzv": "bg-primary/10 text-primary dark:bg-primary/20",
@@ -16,23 +14,24 @@ const fileTypeColors: Record<string, string> = {
   ".qza": "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
 }
 
-export default function DashboardPage() {
-  const { theme, setTheme } = useTheme()
+export default async function DashboardPage() {
+  const dbProjects = await getUserProjects();
+
+  const projects = dbProjects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    date: p.updatedAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+    fileType: ".qzv",
+    fileCount: p._count.files,
+    analysisCount: p._count.sessions,
+  }))
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="flex items-center justify-between border-b border-border px-4 py-3 md:px-6">
         <YaraLogo />
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label="Toggle theme"
-          >
-            <Sun className="size-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute size-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-          </Button>
+          <ThemeToggle />
           <Avatar className="size-8">
             <AvatarFallback className="bg-accent text-primary text-xs font-medium">
               DR
@@ -59,7 +58,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {mockProjects.map((project) => (
+            {projects.map((project) => (
               <Link
                 key={project.id}
                 href={`/project/${project.id}`}
@@ -73,7 +72,7 @@ export default function DashboardPage() {
                     className={cn(
                       "inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium",
                       fileTypeColors[project.fileType] ||
-                        "bg-muted text-muted-foreground"
+                      "bg-muted text-muted-foreground"
                     )}
                   >
                     {project.fileType}

@@ -7,7 +7,15 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { YaraLogo } from "@/components/yara-logo"
-import { mockProjects, type Project } from "@/lib/mock-data"
+
+export interface SidebarProject {
+  id: string
+  name: string
+  date: string
+  fileType: string
+  fileCount: number
+  analysisCount: number
+}
 
 const fileTypeColors: Record<string, string> = {
   ".qzv": "bg-primary/10 text-primary dark:bg-primary/20",
@@ -21,7 +29,7 @@ function ProjectCard({
   active,
   onClick,
 }: {
-  project: Project
+  project: SidebarProject
   active: boolean
   onClick: () => void
 }) {
@@ -65,10 +73,12 @@ function ProjectCard({
 }
 
 export function ProjectSidebar({
+  projects,
   activeProjectId,
   onSelectProject,
   collapsed = false,
 }: {
+  projects: SidebarProject[]
   activeProjectId: string | null
   onSelectProject: (id: string) => void
   collapsed?: boolean
@@ -89,7 +99,7 @@ export function ProjectSidebar({
           </Button>
         </div>
         <div className="mt-4 flex flex-1 flex-col items-center gap-1">
-          {mockProjects.map((p) => (
+          {projects.map((p) => (
             <button
               key={p.id}
               onClick={() => onSelectProject(p.id)}
@@ -150,7 +160,7 @@ export function ProjectSidebar({
 
       <ScrollArea className="flex-1 px-2">
         <div className="flex flex-col gap-0.5 py-1">
-          {mockProjects.map((project) => (
+          {projects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}

@@ -20,9 +20,11 @@ const tabs: { id: MobileTab; label: string; icon: React.ComponentType<{ classNam
 ]
 
 export function MobileTopBar({
+  projects,
   activeProjectId,
   onSelectProject,
 }: {
+  projects: any[] // We can import SidebarProject or keep any for UI 
   activeProjectId: string | null
   onSelectProject: (id: string) => void
 }) {
@@ -37,6 +39,7 @@ export function MobileTopBar({
         <SheetContent side="left" className="w-[280px] p-0">
           <SheetTitle className="sr-only">Navigation</SheetTitle>
           <ProjectSidebar
+            projects={projects}
             activeProjectId={activeProjectId}
             onSelectProject={onSelectProject}
           />
