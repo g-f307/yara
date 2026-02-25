@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Copiar package files primeiro (cache)
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN NODE_ENV=development npm install
 
 # Copiar código
 COPY . .

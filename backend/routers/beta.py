@@ -41,7 +41,9 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
     # Construir traces Plotly
     if request.metadata and request.group_col:
         meta_df = pd.DataFrame(request.metadata)
-        if 'sample-id' in meta_df.columns:
+        if 'sample_id' in meta_df.columns:
+            meta_df = meta_df.set_index('sample_id')
+        elif 'sample-id' in meta_df.columns:
             meta_df = meta_df.set_index('sample-id')
         merged = coords.join(meta_df[[request.group_col]], how='left')
         groups = merged[request.group_col].unique().tolist()

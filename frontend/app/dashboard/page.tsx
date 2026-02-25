@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button"
 import { YaraLogo } from "@/components/yara-logo"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { getUserProjects } from "@/lib/actions"
-import { ThemeToggle } from "@/components/theme-toggle" // We need to extract theme toggle to a client component
+import { ThemeToggle } from "@/components/theme-toggle"
+import { UserButton } from "@clerk/nextjs"
+import { CreateProjectDialog } from "@/components/create-project-dialog"
 
 const fileTypeColors: Record<string, string> = {
   ".qzv": "bg-primary/10 text-primary dark:bg-primary/20",
@@ -17,7 +19,7 @@ const fileTypeColors: Record<string, string> = {
 export default async function DashboardPage() {
   const dbProjects = await getUserProjects();
 
-  const projects = dbProjects.map((p) => ({
+  const projects = dbProjects.map((p: any) => ({
     id: p.id,
     name: p.name,
     date: p.updatedAt.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
@@ -32,11 +34,7 @@ export default async function DashboardPage() {
         <YaraLogo />
         <div className="flex items-center gap-3">
           <ThemeToggle />
-          <Avatar className="size-8">
-            <AvatarFallback className="bg-accent text-primary text-xs font-medium">
-              DR
-            </AvatarFallback>
-          </Avatar>
+          <UserButton afterSignOutUrl="/" />
         </div>
       </header>
 
@@ -51,14 +49,17 @@ export default async function DashboardPage() {
                 Manage your metagenomic analysis projects
               </p>
             </div>
-            <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-              <Plus className="size-4" />
-              New Project
-            </Button>
+
+            <CreateProjectDialog>
+              <Button className="bg-primary text-primary-foreground hover:bg-primary/90">
+                <Plus className="size-4" />
+                New Project
+              </Button>
+            </CreateProjectDialog>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
+            {projects.map((project: any) => (
               <Link
                 key={project.id}
                 href={`/project/${project.id}`}
@@ -94,11 +95,12 @@ export default async function DashboardPage() {
               </Link>
             ))}
 
-            {/* New Project card */}
-            <button className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary">
-              <Plus className="size-8" strokeWidth={1.5} />
-              <span className="text-sm font-medium">Create new project</span>
-            </button>
+            <CreateProjectDialog>
+              <button className="flex h-full w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary">
+                <Plus className="size-8" strokeWidth={1.5} />
+                <span className="text-sm font-medium">Create new project</span>
+              </button>
+            </CreateProjectDialog>
           </div>
         </div>
       </main>

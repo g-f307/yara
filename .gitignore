@@ -44,3 +44,7 @@ frontend/node_modules/
 # Modelos Rasa (legado)
 models/
 .rasa/
+python_core/venv/
+python_core/.venv/
+python-core/venv/
+python-core/.venv/

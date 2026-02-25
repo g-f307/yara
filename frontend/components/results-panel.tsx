@@ -22,7 +22,38 @@ const fileIcons: Record<string, string> = {
   ".qza": "text-sky-600 dark:text-sky-400",
 }
 
-function ResultsTab() {
+import { getAlphaDiversity, getBetaDiversity, getTaxonomy, getRarefaction } from "@/lib/actions"
+import { Suspense, useState, useEffect } from "react"
+import { PlotlyPlot } from "@/components/plots/plotly-plot"
+
+// These would normally be fetched from the backend via useEffect/Server Actions
+// Using an empty state initially with standard loading UI or placeholders
+function ResultsTab({ projectId }: { projectId: string }) {
+
+  const [alphaPlotData, setAlphaPlotData] = useState<any>(null);
+  const [betaPlotData, setBetaPlotData] = useState<any>(null);
+  const [taxonomyPlotData, setTaxonomyPlotData] = useState<any>(null);
+  const [rarefactionPlotData, setRarefactionPlotData] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true);
+      const alphaResult = await getAlphaDiversity(projectId, "shannon", "group")
+      const betaResult = await getBetaDiversity(projectId, "group")
+      const taxonomyResult = await getTaxonomy(projectId, "Phylum")
+      const rarefactionResult = await getRarefaction(projectId)
+
+      if (alphaResult.success) setAlphaPlotData(alphaResult.data);
+      if (betaResult.success) setBetaPlotData(betaResult.data);
+      if (taxonomyResult.success) setTaxonomyPlotData(taxonomyResult.data);
+      if (rarefactionResult.success) setRarefactionPlotData(rarefactionResult.data);
+
+      setIsLoading(false);
+    }
+    loadData();
+  }, [projectId]);
+
   return (
     <div className="flex flex-col gap-3">
       {/* PCoA result card */}
@@ -32,17 +63,22 @@ function ResultsTab() {
           <span className="text-sm font-medium text-card-foreground">
             PCoA Ordination
           </span>
-          <span className="ml-auto text-[11px] text-muted-foreground">
-            10:25 AM
-          </span>
         </div>
-        <div className="relative aspect-[4/3] bg-muted">
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <BarChart3 className="size-8 text-muted-foreground/40" />
-            <span className="text-xs text-muted-foreground">
-              PCoA Chart — Bray-Curtis
-            </span>
-          </div>
+        <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
+          {betaPlotData ? (
+            <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
+              <div className="min-w-[500px] min-h-[400px] w-full h-full">
+                <PlotlyPlot data={(betaPlotData as any).data} layout={(betaPlotData as any).layout} />
+              </div>
+            </Suspense>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="size-8 text-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">
+                Waiting for Beta Diversity Analysis...
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
           <Button
@@ -51,7 +87,7 @@ function ResultsTab() {
             className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             <Download className="size-3.5" />
-            Download PNG
+            Download Data
           </Button>
           <Button
             variant="ghost"
@@ -71,17 +107,22 @@ function ResultsTab() {
           <span className="text-sm font-medium text-card-foreground">
             Alpha Diversity
           </span>
-          <span className="ml-auto text-[11px] text-muted-foreground">
-            10:23 AM
-          </span>
         </div>
-        <div className="relative aspect-[4/3] bg-muted">
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <BarChart3 className="size-8 text-muted-foreground/40" />
-            <span className="text-xs text-muted-foreground">
-              Shannon Diversity Boxplot
-            </span>
-          </div>
+        <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
+          {alphaPlotData ? (
+            <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
+              <div className="min-w-[500px] min-h-[400px] w-full h-full">
+                <PlotlyPlot data={(alphaPlotData as any).data} layout={(alphaPlotData as any).layout} />
+              </div>
+            </Suspense>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="size-8 text-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">
+                Waiting for Alpha Diversity Analysis...
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
           <Button
@@ -90,7 +131,7 @@ function ResultsTab() {
             className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
           >
             <Download className="size-3.5" />
-            Download PNG
+            Download Data
           </Button>
           <Button
             variant="ghost"
@@ -99,6 +140,74 @@ function ResultsTab() {
           >
             <Plus className="size-3.5" />
             Add to Report
+          </Button>
+        </div>
+      </div>
+
+      {/* Taxonomy card */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="size-2 rounded-full bg-primary" />
+          <span className="text-sm font-medium text-card-foreground">
+            Taxonomic Composition
+          </span>
+        </div>
+        <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
+          {taxonomyPlotData ? (
+            <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
+              <div className="min-w-[500px] min-h-[400px] w-full h-full">
+                <PlotlyPlot data={(taxonomyPlotData as any).data} layout={(taxonomyPlotData as any).layout} />
+              </div>
+            </Suspense>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="size-8 text-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">
+                Waiting for Taxonomy Analysis...
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Download className="size-3.5" /> Download Data
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Plus className="size-3.5" /> Add to Report
+          </Button>
+        </div>
+      </div>
+
+      {/* Rarefaction card */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="size-2 rounded-full bg-primary" />
+          <span className="text-sm font-medium text-card-foreground">
+            Rarefaction Curves
+          </span>
+        </div>
+        <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
+          {rarefactionPlotData ? (
+            <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
+              <div className="min-w-[500px] min-h-[400px] w-full h-full">
+                <PlotlyPlot data={(rarefactionPlotData as any).data} layout={(rarefactionPlotData as any).layout} />
+              </div>
+            </Suspense>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="size-8 text-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">
+                Waiting for Rarefaction Analysis...
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Download className="size-3.5" /> Download Data
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Plus className="size-3.5" /> Add to Report
           </Button>
         </div>
       </div>
@@ -167,7 +276,7 @@ function HistoryTab() {
   )
 }
 
-export function ResultsPanel({ className }: { className?: string }) {
+export function ResultsPanel({ className, projectId }: { className?: string; projectId: string }) {
   return (
     <div className={cn("flex h-full flex-col border-l border-border bg-background", className)}>
       <Tabs defaultValue="results" className="flex h-full flex-col">
@@ -184,10 +293,10 @@ export function ResultsPanel({ className }: { className?: string }) {
             </TabsTrigger>
           </TabsList>
         </div>
-        <ScrollArea className="flex-1">
+        <div className="flex-1 overflow-y-auto min-h-0 w-full pt-2">
           <div className="p-3">
             <TabsContent value="results" className="mt-0">
-              <ResultsTab />
+              <ResultsTab projectId={projectId} />
             </TabsContent>
             <TabsContent value="files" className="mt-0">
               <FilesTab />
@@ -196,7 +305,7 @@ export function ResultsPanel({ className }: { className?: string }) {
               <HistoryTab />
             </TabsContent>
           </div>
-        </ScrollArea>
+        </div>
       </Tabs>
     </div>
   )

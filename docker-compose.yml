@@ -24,6 +24,7 @@ services:
       - /app/.next
     environment:
       - PYTHON_CORE_URL=http://backend:8000
+      - DATABASE_URL=postgresql://yara:yara_password@yara-postgres:5432/yara_db?schema=public
     depends_on:
       - backend
     restart: unless-stopped
