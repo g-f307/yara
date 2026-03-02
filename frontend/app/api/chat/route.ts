@@ -20,6 +20,17 @@ export async function POST(req: Request) {
         return new Response("Missing projectId", { status: 400 });
     }
 
+    // Process messages to ensure they match ModelMessage schema
+    const coreMessages = messages.map((msg: any) => {
+        if (msg.parts && Array.isArray(msg.parts)) {
+            return {
+                role: msg.role,
+                content: msg.parts.map((p: any) => p.text).join("\n")
+            };
+        }
+        return { role: msg.role, content: msg.content || "" };
+    });
+
     // Define the YARA model and behavior
     const systemPrompt = `Você é o YARA (Your Assistant for Results Analysis), um especialista em bioinformática e análise metagenômica usando QIIME 2.
 Responda sempre em português brasileiro de forma clara e objetiva para pesquisadores.
@@ -29,7 +40,7 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
     const result = streamText({
         model: anthropic("claude-3-5-sonnet-20241022"),
         system: systemPrompt,
-        messages,
+        messages: coreMessages,
         tools: {
             parseData: tool({
                 description: "Parse and validate a QIIME 2 file (.qzv, .tsv, etc) associated with this project.",
