@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/alpha", tags=["alpha"])
 
 
 class AlphaRequest(BaseModel):
-    data: List[Dict[str, Any]]
+    project_id: str
     metric: str = "shannon"
     group_col: Optional[str] = None
 
@@ -26,27 +26,42 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
     """
     Calcula diversidade alfa e retorna estatísticas + boxplot Plotly.
     """
-    df = pd.DataFrame(request.data)
-    analyzer = AlphaDiversityAnalyzer(df)
+    from utils.project_manager import ProjectManager
+    
+    try:
+        df = ProjectManager.get_project_data(request.project_id, 'alpha')
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
+        
+    # Join metadata if a group column is requested
+    if request.group_col:
+        meta = ProjectManager.get_project_metadata(request.project_id)
+        if meta is not None and request.group_col in meta.columns:
+            df = df.join(meta[[request.group_col]], how='left')
 
-    # Estatísticas
-    stats = analyzer.get_summary_stats(request.metric)
-    interpretation = analyzer.interpret_value(stats['mean'], request.metric)
+    try:
+        analyzer = AlphaDiversityAnalyzer(df)
 
-    result: Dict[str, Any] = {
-        "stats": stats,
-        "interpretation": interpretation,
-        "metric": request.metric,
-        "n_samples": len(df),
-    }
+        # Estatísticas
+        stats = analyzer.get_summary_stats(request.metric)
+        interpretation = analyzer.interpret_value(stats['mean'], request.metric)
 
-    # Comparação entre grupos (se solicitada)
-    if request.group_col and request.group_col in df.columns:
-        try:
-            comparison = analyzer.compare_groups(request.group_col, request.metric)
-            result["comparison"] = comparison
-        except Exception as e:
-            result["comparison_error"] = str(e)
+        result: Dict[str, Any] = {
+            "stats": stats,
+            "interpretation": interpretation,
+            "metric": request.metric,
+            "n_samples": len(df),
+        }
+
+        # Comparação entre grupos (se solicitada)
+        if request.group_col and request.group_col in df.columns:
+            try:
+                comparison = analyzer.compare_groups(request.group_col, request.metric)
+                result["comparison"] = comparison
+            except Exception as e:
+                result["comparison_error"] = str(e)
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
 
     # Plotly spec — boxplot por grupo ou geral
     if request.group_col and request.group_col in df.columns:

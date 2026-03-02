@@ -74,6 +74,8 @@ class QIIME2Parser:
             Lista de paths encontrados
         """
         files = list(extract_path.rglob(pattern))
+        if not files and pattern == "*.tsv":
+            files = list(extract_path.rglob("*.csv"))
         return files
     
     def load_alpha_diversity(self, filepath: str) -> pd.DataFrame:

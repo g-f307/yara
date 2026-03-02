@@ -16,69 +16,77 @@ router = APIRouter(prefix="/api/rarefaction", tags=["rarefaction"])
 
 
 class RarefactionRequest(BaseModel):
-    data: List[Dict[str, Any]]
+    project_id: str
     max_samples: int = 20
 
 
 @router.post("/analyze")
 async def analyze_rarefaction(request: RarefactionRequest) -> Dict[str, Any]:
     """
-    Analisa curvas de rarefação e retorna estatísticas, recomendação e gráfico Plotly.
+    Analisa curvas de rarefação de um projeto iterando pelas amostras.
     """
-    df = pd.DataFrame(request.data)
+    from utils.project_manager import ProjectManager
 
-    if 'sample-id' in df.columns:
-        df = df.set_index('sample-id')
+    try:
+        df = ProjectManager.get_project_data(request.project_id, 'rarefaction')
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
 
-    analyzer = RarefactionAnalyzer(df)
+    try:
+        if 'sample-id' in df.columns:
+            df = df.set_index('sample-id')
 
-    stats = analyzer.get_summary_stats()
-    recommendation = analyzer.recommend_sampling_depth()
-    interpretation = analyzer.interpret_rarefaction()
-    curve_data = analyzer.get_curve_data(max_samples=request.max_samples)
+        analyzer = RarefactionAnalyzer(df)
 
-    # Plotly — curvas de rarefação
-    traces = []
-    for curve in curve_data['curves']:
-        traces.append({
-            "type": "scatter",
-            "mode": "lines+markers",
-            "x": curve['depths'],
-            "y": curve['values'],
-            "name": curve['sample_id'],
-            "marker": {"size": 4},
-            "line": {"width": 1.5},
-        })
+        stats = analyzer.get_summary_stats()
+        recommendation = analyzer.recommend_sampling_depth()
+        interpretation = analyzer.interpret_rarefaction()
+        curve_data = analyzer.get_curve_data(max_samples=request.max_samples)
 
-    # Linha de corte recomendada
-    if recommendation.get('recommended_depth'):
-        traces.append({
-            "type": "scatter",
-            "mode": "lines",
-            "x": [recommendation['recommended_depth'], recommendation['recommended_depth']],
-            "y": [0, max(max(c['values']) for c in curve_data['curves']) if curve_data['curves'] else 100],
-            "name": f"Profundidade recomendada ({recommendation['recommended_depth']})",
-            "line": {"dash": "dash", "color": "red", "width": 2},
-            "showlegend": True,
-        })
+        # Plotly — curvas de rarefação
+        traces = []
+        for curve in curve_data['curves']:
+            traces.append({
+                "type": "scatter",
+                "mode": "lines+markers",
+                "x": curve['depths'],
+                "y": curve['values'],
+                "name": curve['sample_id'],
+                "marker": {"size": 4},
+                "line": {"width": 1.5},
+            })
 
-    plotly_spec = {
-        "data": traces,
-        "layout": {
-            "title": "Curvas de Rarefação",
-            "xaxis": {"title": "Profundidade de Sequenciamento"},
-            "yaxis": {"title": "Features Observadas"},
-            "template": "plotly_white",
-            "hovermode": "x unified",
-            "showlegend": len(traces) <= 15,
-        },
-    }
+        # Linha de corte recomendada
+        if recommendation.get('recommended_depth'):
+            traces.append({
+                "type": "scatter",
+                "mode": "lines",
+                "x": [recommendation['recommended_depth'], recommendation['recommended_depth']],
+                "y": [0, max(max(c['values']) for c in curve_data['curves']) if curve_data['curves'] else 100],
+                "name": f"Profundidade recomendada ({recommendation['recommended_depth']})",
+                "line": {"dash": "dash", "color": "red", "width": 2},
+                "showlegend": True,
+            })
 
-    return {
-        "data": {
-            "stats": stats,
-            "recommendation": recommendation,
-            "interpretation": interpretation,
-        },
-        "plotly_spec": plotly_spec,
-    }
+        plotly_spec = {
+            "data": traces,
+            "layout": {
+                "title": "Curvas de Rarefação",
+                "xaxis": {"title": "Profundidade de Sequenciamento"},
+                "yaxis": {"title": "Features Observadas"},
+                "template": "plotly_white",
+                "hovermode": "x unified",
+                "showlegend": len(traces) <= 15,
+            },
+        }
+
+        return {
+            "data": {
+                "stats": stats,
+                "recommendation": recommendation,
+                "interpretation": interpretation,
+            },
+            "plotly_spec": plotly_spec,
+        }
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}

@@ -17,113 +17,127 @@ router = APIRouter(prefix="/api/beta", tags=["beta"])
 
 
 class BetaRequest(BaseModel):
-    distance_matrix: List[List[float]]
-    sample_ids: List[str]
-    metadata: Optional[List[Dict[str, Any]]] = None
+    project_id: str
     group_col: Optional[str] = None
 
 
 @router.post("/pcoa")
 async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
     """
-    Calcula PCoA a partir de matriz de distâncias.
+    Calcula PCoA a partir de matriz de distâncias de um projeto.
     """
-    dm = pd.DataFrame(
-        request.distance_matrix,
-        index=request.sample_ids,
-        columns=request.sample_ids,
-    )
-    analyzer = BetaDiversityAnalyzer(dm)
+    from utils.project_manager import ProjectManager
 
-    coords = analyzer.calculate_pcoa(n_components=3)
-    stats = analyzer.get_distance_stats()
+    try:
+        dm = ProjectManager.get_project_data(request.project_id, 'beta')
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
 
-    # Construir traces Plotly
-    if request.metadata and request.group_col:
-        meta_df = pd.DataFrame(request.metadata)
-        if 'sample_id' in meta_df.columns:
-            meta_df = meta_df.set_index('sample_id')
-        elif 'sample-id' in meta_df.columns:
-            meta_df = meta_df.set_index('sample-id')
-        merged = coords.join(meta_df[[request.group_col]], how='left')
-        groups = merged[request.group_col].unique().tolist()
+    try:
+        analyzer = BetaDiversityAnalyzer(dm)
+        coords = analyzer.calculate_pcoa(n_components=3)
+        stats = analyzer.get_distance_stats()
 
-        traces = []
-        for group in groups:
-            subset = merged[merged[request.group_col] == group]
-            traces.append({
+        # Construir traces Plotly
+        if request.group_col:
+            meta_df = ProjectManager.get_project_metadata(request.project_id)
+            if meta_df is not None and request.group_col in meta_df.columns:
+                merged = coords.join(meta_df[[request.group_col]], how='left')
+                groups = merged[request.group_col].unique().tolist()
+        
+                traces = []
+                for group in groups:
+                    subset = merged[merged[request.group_col] == group]
+                    traces.append({
+                        "type": "scatter",
+                        "mode": "markers",
+                        "x": subset['PC1'].tolist(),
+                        "y": subset['PC2'].tolist(),
+                        "name": str(group),
+                        "text": subset.index.tolist(),
+                        "marker": {"size": 10},
+                    })
+            else:
+                traces = [{
+                    "type": "scatter",
+                    "mode": "markers+text",
+                    "x": coords['PC1'].tolist(),
+                    "y": coords['PC2'].tolist(),
+                    "text": coords.index.tolist(),
+                    "textposition": "top center",
+                    "marker": {"size": 10},
+                }]
+        else:
+            traces = [{
                 "type": "scatter",
-                "mode": "markers",
-                "x": subset['PC1'].tolist(),
-                "y": subset['PC2'].tolist(),
-                "name": str(group),
-                "text": subset.index.tolist(),
+                "mode": "markers+text",
+                "x": coords['PC1'].tolist(),
+                "y": coords['PC2'].tolist(),
+                "text": coords.index.tolist(),
+                "textposition": "top center",
                 "marker": {"size": 10},
-            })
-    else:
-        traces = [{
-            "type": "scatter",
-            "mode": "markers+text",
-            "x": coords['PC1'].tolist(),
-            "y": coords['PC2'].tolist(),
-            "text": coords.index.tolist(),
-            "textposition": "top center",
-            "marker": {"size": 10},
-        }]
+            }]
 
-    plotly_spec = {
-        "data": traces,
-        "layout": {
-            "title": "PCoA — Diversidade Beta",
-            "xaxis": {"title": "PC1"},
-            "yaxis": {"title": "PC2"},
-            "template": "plotly_white",
-            "hovermode": "closest",
-        },
-    }
+        plotly_spec = {
+            "data": traces,
+            "layout": {
+                "title": "PCoA — Diversidade Beta",
+                "xaxis": {"title": "PC1"},
+                "yaxis": {"title": "PC2"},
+                "template": "plotly_white",
+                "hovermode": "closest",
+            },
+        }
 
-    return {
-        "data": {
-            "coordinates": coords.reset_index().to_dict(orient='records'),
-            "distance_stats": stats,
-        },
-        "plotly_spec": plotly_spec,
-    }
+        return {
+            "data": {
+                "coordinates": coords.reset_index().to_dict(orient='records'),
+                "distance_stats": stats,
+            },
+            "plotly_spec": plotly_spec,
+        }
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
 
 
 @router.post("/distances")
 async def get_distances(request: BetaRequest) -> Dict[str, Any]:
     """
-    Retorna estatísticas da matriz de distâncias.
+    Retorna estatísticas da matriz de distâncias de um projeto.
     """
-    dm = pd.DataFrame(
-        request.distance_matrix,
-        index=request.sample_ids,
-        columns=request.sample_ids,
-    )
-    analyzer = BetaDiversityAnalyzer(dm)
-    stats = analyzer.get_distance_stats()
+    from utils.project_manager import ProjectManager
 
-    # Heatmap
-    plotly_spec = {
-        "data": [{
-            "type": "heatmap",
-            "z": request.distance_matrix,
-            "x": request.sample_ids,
-            "y": request.sample_ids,
-            "colorscale": "Viridis",
-        }],
-        "layout": {
-            "title": "Matriz de Distâncias",
-            "template": "plotly_white",
-        },
-    }
+    try:
+        dm = ProjectManager.get_project_data(request.project_id, 'beta')
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
 
-    return {
-        "data": {
-            "stats": stats,
-            "matrix": request.distance_matrix,
-            "sample_ids": request.sample_ids,
-        },
-        "plotly_spec": plotly_spec,
-    }
+    try:
+        analyzer = BetaDiversityAnalyzer(dm)
+        stats = analyzer.get_distance_stats()
+
+        # Heatmap
+        plotly_spec = {
+            "data": [{
+                "type": "heatmap",
+                "z": dm.values.tolist(),
+                "x": dm.index.tolist(),
+                "y": dm.columns.tolist(),
+                "colorscale": "Viridis",
+            }],
+            "layout": {
+                "title": "Matriz de Distâncias",
+                "template": "plotly_white",
+            },
+        }
+
+        return {
+            "data": {
+                "stats": stats,
+                "matrix": dm.values.tolist(),
+                "sample_ids": dm.index.tolist(),
+            },
+            "plotly_spec": plotly_spec,
+        }
+    except Exception as e:
+        return {"error": str(e), "plotly_spec": None}
