@@ -27,7 +27,7 @@ export default function ProjectLayoutClient({ projectId, projects }: ProjectLayo
     });
 
     return (
-        <div className="flex h-screen bg-background text-foreground overflow-hidden">
+        <div className="fixed inset-0 flex bg-background text-foreground overflow-hidden">
             {/* Sidebar with projects list */}
             <ProjectSidebar
                 projects={projects}

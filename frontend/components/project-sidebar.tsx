@@ -15,6 +15,7 @@ export interface SidebarProject {
   fileType: string
   fileCount: number
   analysisCount: number
+  files?: Array<{ id: string; name: string; type: string; url: string }>
 }
 
 const fileTypeColors: Record<string, string> = {
@@ -58,7 +59,7 @@ function ProjectCard({
           {project.fileType}
         </span>
       </div>
-      <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-3 text-[11px] text-muted-foreground pb-1">
         <span className="flex items-center gap-1">
           <FileText className="size-3" />
           {project.fileCount} files
@@ -68,6 +69,21 @@ function ProjectCard({
           {project.analysisCount} analyses
         </span>
       </div>
+      {active && project.files && project.files.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1 border-t border-border/50 pt-2">
+          {project.files.map(f => (
+            <div key={f.id} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-default">
+              <span className={cn(
+                "inline-flex shrink-0 items-center justify-center rounded size-4 text-[8px] font-bold",
+                fileTypeColors[f.type] || "bg-muted text-foreground"
+              )}>
+                {f.type.replace('.', '')}
+              </span>
+              <span className="truncate" title={f.name}>{f.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </button>
   )
 }
@@ -158,7 +174,7 @@ export function ProjectSidebar({
         </p>
       </div>
 
-      <ScrollArea className="flex-1 px-2">
+      <ScrollArea className="flex-1 px-2 h-full min-h-0 w-full overflow-y-auto">
         <div className="flex flex-col gap-0.5 py-1">
           {projects.map((project) => (
             <ProjectCard
