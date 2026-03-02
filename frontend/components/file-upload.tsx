@@ -9,25 +9,48 @@ interface FileUploadProps {
 }
 
 import { UploadDropzone } from "@/lib/uploadthing";
+import { createProjectFile } from "@/lib/actions";
 
 export function FileUpload({ compact = false, projectId, onFileSelect }: FileUploadProps) {
   return (
     <div className={cn("w-full", compact && "p-2")}>
       <UploadDropzone
         endpoint="dataUploader"
-        onClientUploadComplete={(res) => {
-          // Do something with the response
-          console.log("Files: ", res);
-          alert("Upload Completed");
-          if (onFileSelect && res.length > 0) {
-            // Hacky translation of Uploadthing file to local state requirement
-            // We'd actually want to pass the URL/key and update DB
-            onFileSelect(new File([], res[0].name));
+        onClientUploadComplete={async (res) => {
+          console.log("Files uploaded to UploadThing:", res);
+
+          if (res && res.length > 0) {
+            try {
+              if (projectId) {
+                // Save all uploaded files to the database
+                for (const file of res) {
+                  const fileExtension = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+                  const result = await createProjectFile(projectId, {
+                    name: file.name,
+                    type: fileExtension,
+                    url: file.url,
+                    key: file.key,
+                    size: file.size,
+                  });
+                  if (result?.error) {
+                    console.error("Server action error:", result.error);
+                    alert(`Falha ao salvar no banco: ${result.error}`);
+                  }
+                }
+              }
+              if (onFileSelect) {
+                onFileSelect(new File([], res[0].name));
+              }
+            } catch (err: any) {
+              console.error("Error during upload completion:", err);
+              alert(`Erro interno do Next.js: ${err.message || String(err)}`);
+            }
           }
         }}
         onUploadError={(error: Error) => {
-          alert(`ERROR! ${error.message}`);
+          alert(`Errror: ${error.message}`);
         }}
+        config={{ mode: "auto", appendOnPaste: true }}
         className="ut-button:bg-primary ut-button:text-primary-foreground ut-label:text-primary ut-allowed-content:text-muted-foreground border-border hover:border-primary/50 transition-colors bg-accent/20"
       />
     </div>

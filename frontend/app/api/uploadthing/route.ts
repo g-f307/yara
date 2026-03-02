@@ -1,7 +1,9 @@
 import { createRouteHandler } from "uploadthing/next";
+import { NextRequest } from "next/server";
 import { ourFileRouter } from "./core";
 
-// Export routes for Next App Router
 export const { GET, POST } = createRouteHandler({
     router: ourFileRouter,
 });
+
+export const dynamic = "force-dynamic";

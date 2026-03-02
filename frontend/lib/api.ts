@@ -42,80 +42,74 @@ export async function healthCheck() {
 }
 
 export async function analyzeAlpha(
-    data: Record<string, unknown>[],
+    projectId: string,
     metric = "shannon",
     groupCol?: string
 ) {
     return request("/api/alpha/analyze", {
         method: "POST",
-        body: JSON.stringify({ data, metric, group_col: groupCol }),
+        body: JSON.stringify({ project_id: projectId, metric, group_col: groupCol }),
     });
 }
 
 export async function computePCoA(
-    distanceMatrix: number[][],
-    sampleIds: string[],
-    metadata?: Record<string, unknown>[],
+    projectId: string,
     groupCol?: string
 ) {
     return request("/api/beta/pcoa", {
         method: "POST",
         body: JSON.stringify({
-            distance_matrix: distanceMatrix,
-            sample_ids: sampleIds,
-            metadata,
+            project_id: projectId,
             group_col: groupCol,
         }),
     });
 }
 
 export async function getDistances(
-    distanceMatrix: number[][],
-    sampleIds: string[]
+    projectId: string
 ) {
     return request("/api/beta/distances", {
         method: "POST",
         body: JSON.stringify({
-            distance_matrix: distanceMatrix,
-            sample_ids: sampleIds,
+            project_id: projectId,
         }),
     });
 }
 
 export async function taxonomySummary(
-    data: Record<string, unknown>[],
+    projectId: string,
     level = "Phylum",
     topN = 10
 ) {
     return request("/api/taxonomy/summary", {
         method: "POST",
-        body: JSON.stringify({ data, level, top_n: topN }),
+        body: JSON.stringify({ project_id: projectId, level, top_n: topN }),
     });
 }
 
 export async function taxonomyBarplot(
-    data: Record<string, unknown>[],
+    projectId: string,
     level = "Phylum",
     topN = 10
 ) {
     return request("/api/taxonomy/barplot", {
         method: "POST",
-        body: JSON.stringify({ data, level, top_n: topN }),
+        body: JSON.stringify({ project_id: projectId, level, top_n: topN }),
     });
 }
 
 export async function analyzeRarefaction(
-    data: Record<string, unknown>[],
+    projectId: string,
     maxSamples = 20
 ) {
     return request("/api/rarefaction/analyze", {
         method: "POST",
-        body: JSON.stringify({ data, max_samples: maxSamples }),
+        body: JSON.stringify({ project_id: projectId, max_samples: maxSamples }),
     });
 }
 
 export async function compareStatistics(
-    data: Record<string, unknown>[],
+    projectId: string,
     groupCol: string,
     metricCol: string,
     test: "kruskal" | "mann_whitney" = "kruskal",
@@ -125,7 +119,7 @@ export async function compareStatistics(
     return request("/api/statistics/compare", {
         method: "POST",
         body: JSON.stringify({
-            data,
+            project_id: projectId,
             group_col: groupCol,
             metric_col: metricCol,
             test,
@@ -147,5 +141,12 @@ export async function generateReport(
             sections,
             output_format: format,
         }),
+    });
+}
+
+export async function syncProjectFiles(project_id: string, files: { name: string; url: string }[]) {
+    return request("/api/project/sync", {
+        method: "POST",
+        body: JSON.stringify({ project_id, files }),
     });
 }

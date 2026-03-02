@@ -2,6 +2,10 @@ import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import { ThemeProvider } from "@/components/theme-provider"
+import { NextSSRPlugin } from "@uploadthing/react/next-ssr-plugin"
+import { extractRouterConfig } from "uploadthing/server"
+import { ourFileRouter } from "@/app/api/uploadthing/core"
+import "@uploadthing/react/styles.css"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -50,6 +54,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en" suppressHydrationWarning>
         <body className="font-sans antialiased">
+          <NextSSRPlugin routerConfig={extractRouterConfig(ourFileRouter)} />
           <ThemeProvider
             attribute="class"
             defaultTheme="system"
