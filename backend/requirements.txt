@@ -19,3 +19,5 @@ python-docx>=1.0.0
 
 # Utilities
 python-dotenv>=1.0.0
+httpx>=0.25.0
+aiofiles>=23.2.1

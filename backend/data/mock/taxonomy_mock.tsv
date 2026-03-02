@@ -1,0 +1,6 @@
+Feature ID	Taxon	Confidence	Amostra1	Amostra2	Amostra3	Amostra4	Amostra5	Amostra6	Amostra7	Amostra8	Amostra9	Amostra10
+feat_1	k__Bacteria;p__Bacteroidota;c__Bacteroidia;o__Bacteroidales;f__Bacteroidaceae;g__Bacteroides	0.99	98	636	465	10	733	526	21	318	161	760
+feat_2	k__Bacteria;p__Firmicutes;c__Clostridia;o__Clostridiales;f__Ruminococcaceae;g__Faecalibacterium	0.99	328	153	831	912	144	852	944	57	606	340
+feat_3	k__Bacteria;p__Proteobacteria;c__Gammaproteobacteria;o__Enterobacterales;f__Enterobacteriaceae;g__Escherichia-Shigella	0.99	185	372	934	544	125	583	615	825	63	230
+feat_4	k__Bacteria;p__Actinobacteriota;c__Actinobacteria;o__Bifidobacteriales;f__Bifidobacteriaceae;g__Bifidobacterium	0.99	746	882	790	929	807	18	113	102	220	414
+feat_5	k__Bacteria;p__Verrucomicrobiota;c__Verrucomicrobiae;o__Verrucomicrobiales;f__Akkermansiaceae;g__Akkermansia	0.99	227	332	953	663	665	758	344	992	501	525
