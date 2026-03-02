@@ -17,11 +17,13 @@ services:
     build: ./frontend
     container_name: yara-frontend
     ports:
-      - "3001:3000"
+      - "3001:3001"
     volumes:
       - ./frontend:/app
       - /app/node_modules
       - /app/.next
+    env_file:
+      - ./frontend/.env.local
     environment:
       - PYTHON_CORE_URL=http://backend:8000
       - DATABASE_URL=postgresql://yara:yara_password@yara-postgres:5432/yara_db?schema=public
