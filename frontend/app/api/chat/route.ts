@@ -1,5 +1,9 @@
-import { anthropic } from "@ai-sdk/anthropic";
-import { streamText, tool } from "ai";
+import { google } from "@ai-sdk/google";
+import {
+    streamText,
+    tool,
+    convertToModelMessages,
+} from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { auth } from "@clerk/nextjs/server";
@@ -20,17 +24,6 @@ export async function POST(req: Request) {
         return new Response("Missing projectId", { status: 400 });
     }
 
-    // Process messages to ensure they match ModelMessage schema
-    const coreMessages = messages.map((msg: any) => {
-        if (msg.parts && Array.isArray(msg.parts)) {
-            return {
-                role: msg.role,
-                content: msg.parts.map((p: any) => p.text).join("\n")
-            };
-        }
-        return { role: msg.role, content: msg.content || "" };
-    });
-
     // Define the YARA model and behavior
     const systemPrompt = `Você é o YARA (Your Assistant for Results Analysis), um especialista em bioinformática e análise metagenômica usando QIIME 2.
 Responda sempre em português brasileiro de forma clara e objetiva para pesquisadores.
@@ -38,9 +31,10 @@ O usuário enviou os arquivos referentes ao projeto com ID: ${projectId}.
 Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo do projeto.`;
 
     const result = streamText({
-        model: anthropic("claude-3-5-sonnet-20241022"),
+        model: google("gemini-2.5-flash"),
         system: systemPrompt,
-        messages: coreMessages,
+        // convertToModelMessages converts UIMessage[] → ModelMessage[] (AI SDK v6 API)
+        messages: await convertToModelMessages(messages),
         tools: {
             parseData: tool({
                 description: "Parse and validate a QIIME 2 file (.qzv, .tsv, etc) associated with this project.",
@@ -49,8 +43,8 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }),
                 // @ts-ignore
                 execute: async ({ fileId }: { fileId: string }) => {
-                    const result = await parseFile(projectId, fileId);
-                    return result;
+                    const res = await parseFile(projectId, fileId);
+                    return res;
                 },
             }),
             visualizeAlphaDiversity: tool({
@@ -61,8 +55,8 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }),
                 // @ts-ignore
                 execute: async ({ metric, groupCol }: { metric: string, groupCol?: string }) => {
-                    const result = await getAlphaDiversity(projectId, metric, groupCol);
-                    return { success: result.success, requested: "alpha", data: result.data || null };
+                    const res = await getAlphaDiversity(projectId, metric, groupCol);
+                    return { success: res.success, requested: "alpha", plotly_spec: res.data || null };
                 },
             }),
             visualizeBetaDiversity: tool({
@@ -72,8 +66,8 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }),
                 // @ts-ignore
                 execute: async ({ groupCol }: { groupCol?: string }) => {
-                    const result = await getBetaDiversity(projectId, groupCol);
-                    return { success: result.success, requested: "beta", data: result.data || null };
+                    const res = await getBetaDiversity(projectId, groupCol);
+                    return { success: res.success, requested: "beta", plotly_spec: res.data || null };
                 }
             }),
             visualizeTaxonomy: tool({
@@ -83,8 +77,8 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }),
                 // @ts-ignore
                 execute: async ({ level }: { level?: string }) => {
-                    const result = await getTaxonomy(projectId, level || "Phylum");
-                    return { success: result.success, requested: "taxonomy", data: result.data || null };
+                    const res = await getTaxonomy(projectId, level || "Phylum");
+                    return { success: res.success, requested: "taxonomy", plotly_spec: res.data || null };
                 }
             }),
             visualizeRarefaction: tool({
@@ -92,12 +86,12 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 parameters: z.object({}),
                 // @ts-ignore
                 execute: async () => {
-                    const result = await getRarefaction(projectId);
-                    return { success: result.success, requested: "rarefaction", data: result.data || null };
+                    const res = await getRarefaction(projectId);
+                    return { success: res.success, requested: "rarefaction", plotly_spec: res.data || null };
                 }
             })
         },
-        async onFinish({ text, toolCalls, toolResults, finishReason, usage }) {
+        async onFinish({ text }) {
             // Save chat to DB Session
             try {
                 const session = await prisma.analysisSession.findFirst({
@@ -124,19 +118,7 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
         },
     });
 
-    // Handle different versions of the AI SDK
-    if (typeof (result as any).toDataStreamResponse === 'function') {
-        return (result as any).toDataStreamResponse();
-    } else if (typeof (result as any).toTextStreamResponse === 'function') {
-        return (result as any).toTextStreamResponse();
-    } else if (typeof (result as any).toAIStreamResponse === 'function') {
-        return (result as any).toAIStreamResponse();
-    } else {
-        // Fallback for older versions
-        return new Response(result.textStream, {
-            headers: {
-                'Content-Type': 'text/plain; charset=utf-8',
-            },
-        });
-    }
+    // toUIMessageStreamResponse() is the correct method for AI SDK v6 + DefaultChatTransport
+    // It returns a Response with the UI message stream format that useChat expects
+    return result.toUIMessageStreamResponse();
 }
