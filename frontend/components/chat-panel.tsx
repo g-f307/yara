@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { Send, Paperclip, Microscope } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
+
 import { DnaIcon } from "@/components/yara-logo"
 import { AnalysisCard } from "@/components/analysis-card"
 import { FileUpload } from "@/components/file-upload"
@@ -20,8 +20,17 @@ import { PlotlyPlot } from "@/components/plots/plotly-plot"
 function MessageBubble({ message }: { message: any }) {
   const isUser = message.role === "user"
 
-  // Check if there are tool invocations
-  const hasTools = message.toolInvocations && message.toolInvocations.length > 0;
+  // AI SDK v6: messages use parts[] instead of content/toolInvocations
+  const parts: any[] = message.parts ?? []
+
+  // Extract text parts and tool parts
+  const textParts = parts.filter((p: any) => p.type === "text")
+  const toolParts = parts.filter((p: any) =>
+    p.type?.startsWith("tool-") || p.type === "dynamic-tool"
+  )
+
+  // Fallback: if parts is empty but old-style content exists, show it
+  const textContent = textParts.map((p: any) => p.text).join("") || message.content || ""
 
   return (
     <div
@@ -31,22 +40,22 @@ function MessageBubble({ message }: { message: any }) {
         "w-full"
       )}
     >
-      {!isUser && (
+      {(!isUser) && (
         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent mt-0.5">
           <DnaIcon className="size-3.5 text-primary" />
         </div>
       )}
       <div
         className={cn(
-          "max-w-[85%] rounded-lg px-4 py-3 flex flex-col gap-2",
+          "max-w-[85%] rounded-lg px-4 py-3 flex flex-col gap-2 shadow-sm border",
           isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-muted text-foreground"
+            ? "bg-purple-600 border-purple-700 text-white"
+            : "bg-white border-gray-200 text-gray-900 dark:bg-zinc-900 dark:border-zinc-800 dark:text-gray-100"
         )}
       >
-        {message.content && (
+        {textContent && (
           <div className="text-sm leading-relaxed whitespace-pre-wrap">
-            {message.content.split(/(\*\*.*?\*\*)/g).map((part: string, i: number) => {
+            {textContent.split(/(\*\*.*?\*\*)/g).map((part: string, i: number) => {
               if (part.startsWith("**") && part.endsWith("**")) {
                 return (
                   <strong key={i} className="font-semibold">
@@ -59,37 +68,47 @@ function MessageBubble({ message }: { message: any }) {
           </div>
         )}
 
-        {hasTools && (
+        {toolParts.length > 0 && (
           <div className="flex flex-col gap-3 mt-2 w-full">
-            {message.toolInvocations.map((toolReq: any, i: number) => {
-              // Extract the result if completed
-              const result = toolReq.result;
-              const isFinished = toolReq.state === "result";
+            {toolParts.map((toolPart: any, i: number) => {
+              // In AI SDK v6: tool part type is "tool-{toolName}" or "dynamic-tool"
+              // State is now: "input-streaming" | "input-available" | "output-available" | "output-error"
+              const toolName = toolPart.type?.replace(/^tool-/, "") ?? toolPart.toolName
+              const isFinished = toolPart.state === "output-available"
+              const result = toolPart.output  // "output" in v6, was "result" in v3
 
-              if (toolReq.toolName === "visualizeAlphaDiversity" || toolReq.toolName === "visualizeBetaDiversity" || toolReq.toolName === "visualizeTaxonomy" || toolReq.toolName === "visualizeRarefaction") {
+              if (["visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction"].includes(toolName)) {
                 return (
                   <div key={i} className="rounded border border-border bg-background p-3 w-full shadow-sm max-w-[600px]">
                     <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-2">
                       <Microscope className="size-4 text-primary" />
-                      {toolReq.toolName === "visualizeAlphaDiversity"
+                      {toolName === "visualizeAlphaDiversity"
                         ? "Alpha Diversity Analysis"
-                        : toolReq.toolName === "visualizeBetaDiversity"
+                        : toolName === "visualizeBetaDiversity"
                           ? "Beta Diversity Analysis"
-                          : toolReq.toolName === "visualizeTaxonomy"
+                          : toolName === "visualizeTaxonomy"
                             ? "Taxonomic Composition"
                             : "Rarefaction Curve"
                       }
                     </div>
                     <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
-                      {!isFinished || !result?.data ? (
-                        <div className="absolute inset-0 flex items-center justify-center">
+                      {!isFinished || (!result?.plotly_spec && !result?.data) ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-3">
                           <div className="size-6 animate-spin rounded-full border-b-2 border-primary" />
+                          <span className="text-xs">Processando dados...</span>
                         </div>
                       ) : (
                         <Suspense fallback={<div className="flex w-full h-full items-center justify-center"><div className="size-6 rounded-full border-b-2 border-primary animate-spin" /></div>}>
-                          <div className="min-w-[500px] min-h-[400px] w-full h-full">
-                            <PlotlyPlot data={result.data.data} layout={result.data.layout} />
-                          </div>
+                          {(result.plotly_spec?.data || result.data?.data) ? (
+                            <div className="min-w-[500px] min-h-[400px] w-full h-full">
+                              <PlotlyPlot data={result.plotly_spec?.data || result.data?.data} layout={result.plotly_spec?.layout || result.data?.layout} />
+                            </div>
+                          ) : (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-2 p-4 text-center">
+                              <span className="text-sm font-medium">Nenhum dado gerado.</span>
+                              <span className="text-xs">O arquivo carregado não produziu gráficos válidos para esta análise. Tente outra métrica.</span>
+                            </div>
+                          )}
                         </Suspense>
                       )}
                     </div>
@@ -97,7 +116,7 @@ function MessageBubble({ message }: { message: any }) {
                 )
               }
 
-              if (toolReq.toolName === "parseData") {
+              if (toolName === "parseData") {
                 return (
                   <div key={i} className="text-xs italic text-muted-foreground bg-background/50 p-2 rounded w-fit">
                     {!isFinished ? "Parsing dataset..." : "Dataset loaded and parsed."}
@@ -135,9 +154,10 @@ export function ChatPanel({
 }: {
   hasProject: boolean
   projectId?: string
+  initialMessages?: any[]
   onOpenResults?: () => void
 }) {
-  const { messages, sendMessage, status } = useChat({
+  const { messages, setMessages, sendMessage, status } = useChat({
     id: projectId,
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -147,6 +167,7 @@ export function ChatPanel({
 
   const [input, setInput] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
   const isLoading = status === "streaming" || status === "submitted"
 
   useEffect(() => {
@@ -156,6 +177,11 @@ export function ChatPanel({
         Math.min(textareaRef.current.scrollHeight, 120) + "px"
     }
   }, [input])
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" })
+  }, [messages, isLoading])
 
   const onSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -194,11 +220,11 @@ export function ChatPanel({
   }
 
   return (
-    <div className="flex h-full flex-1 flex-col">
-      <ScrollArea className="flex-1 px-4 py-4 md:px-6">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 md:px-6">
         <div className="mx-auto flex max-w-2xl flex-col gap-4">
           {messages.length === 0 && (
-            <div className="h-full flex items-center justify-center text-muted-foreground pt-20">
+            <div className="flex items-center justify-center text-muted-foreground pt-20">
               Comece enviando uma mensagem ou fazendo upload de mais arquivos.
             </div>
           )}
@@ -214,8 +240,10 @@ export function ChatPanel({
               YARA is analyzing...
             </div>
           )}
+          {/* Sentinel for auto-scroll */}
+          <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       <form onSubmit={onSubmit} className="border-t border-border bg-background px-4 pb-4 pt-3 md:px-6">
         <div className="mx-auto max-w-2xl">
