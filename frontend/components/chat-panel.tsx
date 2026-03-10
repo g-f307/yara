@@ -17,6 +17,8 @@ import {
 import { Suspense } from "react"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
+import { useResultsStore } from "@/store/use-results-store"
+
 function MessageBubble({ message }: { message: any }) {
   const isUser = message.role === "user"
 
@@ -50,6 +52,39 @@ function MessageBubble({ message }: { message: any }) {
     }
   });
   const mergedTools = Array.from(allToolsMap.values());
+
+  const setPlotData = useResultsStore((state: any) => state.setPlotData);
+  const activeTab = useResultsStore((state: any) => state.activeTab);
+
+  // Auto-sync valid finished tools to the global Results Store
+  useEffect(() => {
+    if (isUser) return;
+
+    // Use a timeout to ensure the DOM and internal stream states have settled
+    const timeoutId = setTimeout(() => {
+      mergedTools.forEach((tool: any) => {
+        const isFinished = tool.state === "result" || !!tool.result;
+        const result = tool.result || tool.output;
+        
+        if (isFinished && result && (result.plotly_spec || result.data?.data)) {
+          // Both `plotly_spec` and `result.data` structures handled
+          const spec = result.plotly_spec || result.data;
+          
+          if (tool.toolName === "visualizeAlphaDiversity") {
+            setPlotData('alpha', spec);
+          } else if (tool.toolName === "visualizeBetaDiversity") {
+            setPlotData('beta', spec);
+          } else if (tool.toolName === "visualizeTaxonomy") {
+            setPlotData('taxonomy', spec);
+          } else if (tool.toolName === "visualizeRarefaction") {
+            setPlotData('rarefaction', spec);
+          }
+        }
+      });
+    }, 150);
+
+    return () => clearTimeout(timeoutId);
+  }, [JSON.stringify(mergedTools), isUser, setPlotData]);
 
   return (
     <div
