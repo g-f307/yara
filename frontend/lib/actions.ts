@@ -191,3 +191,104 @@ export async function getRarefaction(projectId: string) {
         return { success: false, error: e.message };
     }
 }
+
+export async function getProjectSession(projectId: string) {
+    try {
+        const { userId: clerkId } = await auth();
+        if (!clerkId) throw new Error("Unauthorized");
+
+        const user = await prisma.user.findUnique({ where: { clerkId } });
+        if (!user) {
+            return { success: false, messages: [] };
+        }
+
+        const session = await prisma.analysisSession.findFirst({
+            where: {
+                projectId,
+                project: { userId: user.id }
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        if (session && session.messages) {
+            const coreMessages = JSON.parse(session.messages as string);
+            const uiMessages: any[] = [];
+
+            for (let i = 0; i < coreMessages.length; i++) {
+                const m = coreMessages[i];
+                const msgId = m.id || `msg-${i}-${Date.now()}`;
+
+                if (m.role === 'user') {
+                    const text = typeof m.content === 'string' ? m.content : (m.parts?.find((p: any) => p.type === 'text')?.text || '');
+                    uiMessages.push({ id: msgId, role: 'user', content: text, parts: [{ type: 'text', text }] });
+                } else if (m.role === 'assistant') {
+                    if (typeof m.content === 'string') {
+                        uiMessages.push({ id: msgId, role: 'assistant', content: m.content, parts: [{ type: 'text', text: m.content }] });
+                    } else if (Array.isArray(m.content) || Array.isArray(m.parts)) {
+                        const items = Array.isArray(m.content) ? m.content : m.parts;
+                        const textContent = items.find((c: any) => c.type === 'text')?.text || '';
+                        const toolCalls = items.filter((c: any) => c.type === 'tool-call');
+
+                        const parts: any[] = [{ type: 'text', text: textContent }];
+                        toolCalls.forEach((tc: any) => {
+                            parts.push({
+                                type: `tool-${tc.toolName}`,
+                                toolCallId: tc.toolCallId,
+                                toolName: tc.toolName,
+                                args: tc.args || tc.input,
+                                state: 'call'
+                            });
+                        });
+
+                        uiMessages.push({
+                            id: msgId,
+                            role: 'assistant',
+                            content: textContent,
+                            parts,
+                            toolInvocations: toolCalls.map((tc: any) => ({
+                                state: 'call',
+                                toolCallId: tc.toolCallId,
+                                toolName: tc.toolName,
+                                args: tc.args || tc.input
+                            }))
+                        });
+                    }
+                } else if (m.role === 'tool') {
+                    // Find the last assistant message and map tool results
+                    const lastAsst = uiMessages[uiMessages.length - 1];
+                    if (lastAsst && lastAsst.role === 'assistant') {
+                        const results = Array.isArray(m.content) ? m.content : [];
+                        for (const tr of results) {
+                            if (tr.type === 'tool-result') {
+                                // Update parts array directly
+                                if (lastAsst.parts) {
+                                    const pIdx = lastAsst.parts.findIndex((p: any) => p.toolCallId === tr.toolCallId);
+                                    if (pIdx !== -1) {
+                                        lastAsst.parts[pIdx].state = 'result';
+                                        lastAsst.parts[pIdx].result = tr.output || tr.result;
+                                    }
+                                }
+
+                                // Update toolInvocations fallback
+                                if (lastAsst.toolInvocations) {
+                                    const ti = lastAsst.toolInvocations.find((t: any) => t.toolCallId === tr.toolCallId);
+                                    if (ti) {
+                                        ti.state = 'result';
+                                        ti.result = tr.output || tr.result;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return { success: true, messages: uiMessages };
+        }
+
+        return { success: true, messages: [] };
+    } catch (error) {
+        console.error("Failed to fetch project session:", error);
+        return { success: false, messages: [] };
+    }
+}
