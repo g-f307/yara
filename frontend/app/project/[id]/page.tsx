@@ -1,7 +1,9 @@
-import { getUserProjects } from "@/lib/actions"
+import { getUserProjects, getProjectSession } from "@/lib/actions"
 import ProjectLayoutClient from "./client-page"
 import { SidebarProject } from "@/components/project-sidebar"
 import { syncProjectFiles } from "@/lib/api"
+
+export const dynamic = "force-dynamic";
 
 export default async function ProjectPage({
   params,
@@ -33,5 +35,10 @@ export default async function ProjectPage({
     }
   }
 
-  return <ProjectLayoutClient projectId={projectId} projects={sidebarProjects} />
+  // Fetch past chat session
+  const sessionResult = await getProjectSession(projectId);
+  const initialMessages = sessionResult.success ? sessionResult.messages : [];
+  console.log("INITIAL MESSAGES FROM DB:", initialMessages.length, initialMessages);
+
+  return <ProjectLayoutClient projectId={projectId} projects={sidebarProjects} initialMessages={initialMessages} />
 }
