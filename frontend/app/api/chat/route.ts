@@ -91,7 +91,7 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }
             })
         },
-        async onFinish({ text }) {
+        async onFinish({ response }) {
             // Save chat to DB Session
             try {
                 const session = await prisma.analysisSession.findFirst({
@@ -100,15 +100,27 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 });
 
                 if (session) {
+                    const previousMessages = JSON.parse(session.messages as string || "[]");
+
+                    const allMessagesMap = new Map();
+                    previousMessages.forEach((m: any) => allMessagesMap.set(m.id, m));
+                    messages.forEach((m: any) => {
+                        if (m.id) allMessagesMap.set(m.id, m);
+                    });
+                    response.messages.forEach((m: any) => {
+                        const mId = m.id || `ai-${Date.now()}-${Math.random()}`;
+                        allMessagesMap.set(mId, { ...m, id: mId });
+                    });
+
                     await prisma.analysisSession.update({
                         where: { id: session.id },
-                        data: { messages: JSON.stringify([...messages, { role: "assistant", content: text }]) },
+                        data: { messages: JSON.stringify(Array.from(allMessagesMap.values())) },
                     });
                 } else {
                     await prisma.analysisSession.create({
                         data: {
                             projectId,
-                            messages: JSON.stringify([...messages, { role: "assistant", content: text }]),
+                            messages: JSON.stringify([...messages, ...response.messages]),
                         },
                     });
                 }
