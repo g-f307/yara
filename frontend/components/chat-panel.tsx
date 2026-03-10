@@ -20,17 +20,36 @@ import { PlotlyPlot } from "@/components/plots/plotly-plot"
 function MessageBubble({ message }: { message: any }) {
   const isUser = message.role === "user"
 
-  // AI SDK v6: messages use parts[] instead of content/toolInvocations
-  const parts: any[] = message.parts ?? []
+  // Unified data access for historical (DB) and active stream messages
+  const textContent = typeof message.content === "string"
+    ? message.content
+    : Array.isArray(message.parts)
+      ? message.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
+      : "";
 
-  // Extract text parts and tool parts
-  const textParts = parts.filter((p: any) => p.type === "text")
-  const toolParts = parts.filter((p: any) =>
+  // Merge toolInvocations (from history DB format) and parts (from stream format)
+  const toolInvocations = message.toolInvocations || [];
+  const parts = message.parts || [];
+
+  const streamToolParts = parts.filter((p: any) =>
     p.type?.startsWith("tool-") || p.type === "dynamic-tool"
-  )
+  ).map((p: any, idx: number) => ({
+    toolCallId: p.toolCallId || p.toolName || `tool-fallback-${idx}`,
+    toolName: p.type?.replace(/^tool-/, "") ?? p.toolName,
+    state: p.state === "output-available" || p.output || p.result ? "result" : "call",
+    result: p.output || p.result,
+    args: p.args || p.input
+  }));
 
-  // Fallback: if parts is empty but old-style content exists, show it
-  const textContent = textParts.map((p: any) => p.text).join("") || message.content || ""
+  const allToolsMap = new Map();
+  [...toolInvocations, ...streamToolParts].forEach((t: any) => {
+    if (!allToolsMap.has(t.toolCallId)) {
+      allToolsMap.set(t.toolCallId, t);
+    } else if (t.state === 'result' || t.result) {
+      allToolsMap.set(t.toolCallId, t); // Prefer populated result
+    }
+  });
+  const mergedTools = Array.from(allToolsMap.values());
 
   return (
     <div
@@ -68,14 +87,12 @@ function MessageBubble({ message }: { message: any }) {
           </div>
         )}
 
-        {toolParts.length > 0 && (
+        {mergedTools.length > 0 && (
           <div className="flex flex-col gap-3 mt-2 w-full">
-            {toolParts.map((toolPart: any, i: number) => {
-              // In AI SDK v6: tool part type is "tool-{toolName}" or "dynamic-tool"
-              // State is now: "input-streaming" | "input-available" | "output-available" | "output-error"
-              const toolName = toolPart.type?.replace(/^tool-/, "") ?? toolPart.toolName
-              const isFinished = toolPart.state === "output-available"
-              const result = toolPart.output  // "output" in v6, was "result" in v3
+            {mergedTools.map((toolPart: any, i: number) => {
+              const toolName = toolPart.toolName
+              const isFinished = toolPart.state === "result" || !!toolPart.result
+              const result = toolPart.result || toolPart.output
 
               if (["visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction"].includes(toolName)) {
                 return (
@@ -137,7 +154,7 @@ function MessageBubble({ message }: { message: any }) {
               : "text-muted-foreground mt-1"
           )}
         >
-          {message.timestamp || new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+          {message.timestamp ? message.timestamp : null}
         </p>
       </div>
     </div>
@@ -150,6 +167,7 @@ import { DefaultChatTransport } from "ai"
 export function ChatPanel({
   hasProject,
   projectId = "default",
+  initialMessages = [],
   onOpenResults,
 }: {
   hasProject: boolean
@@ -159,11 +177,19 @@ export function ChatPanel({
 }) {
   const { messages, setMessages, sendMessage, status } = useChat({
     id: projectId,
+    // @ts-ignore
+    initialMessages,
     transport: new DefaultChatTransport({
       api: "/api/chat",
       body: { projectId },
     }),
   });
+
+  useEffect(() => {
+    if (initialMessages && initialMessages.length > 0 && messages.length === 0) {
+      setMessages(initialMessages);
+    }
+  }, [initialMessages, messages.length, setMessages]);
 
   const [input, setInput] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -229,10 +255,7 @@ export function ChatPanel({
             </div>
           )}
           {messages.map((message: any) => (
-            <MessageBubble key={message.id} message={{
-              ...message,
-              timestamp: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-            }} />
+            <MessageBubble key={message.id} message={message} />
           ))}
           {isLoading && (
             <div className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
