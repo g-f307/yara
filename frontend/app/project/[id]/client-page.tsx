@@ -16,9 +16,10 @@ import { useRouter } from "next/navigation"
 interface ProjectLayoutClientProps {
     projectId: string;
     projects: SidebarProject[];
+    initialMessages?: any[];
 }
 
-export default function ProjectLayoutClient({ projectId, projects }: ProjectLayoutClientProps) {
+export default function ProjectLayoutClient({ projectId, projects, initialMessages }: ProjectLayoutClientProps) {
     const router = useRouter();
     const currentProject = projects.find(p => p.id === projectId);
     const [hasData, setHasData] = useState(() => {
@@ -42,7 +43,7 @@ export default function ProjectLayoutClient({ projectId, projects }: ProjectLayo
                         <ResizablePanelGroup direction="horizontal">
                             {/* Chat Panel */}
                             <ResizablePanel defaultSize={45} minSize={30}>
-                                <ChatPanel projectId={projectId} hasProject={true} />
+                                <ChatPanel key={projectId} projectId={projectId} hasProject={true} initialMessages={initialMessages} />
                             </ResizablePanel>
 
                             <ResizableHandle className="w-1.5 hover:bg-primary/20 transition-colors" />
