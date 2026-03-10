@@ -48,15 +48,22 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 },
             }),
             visualizeAlphaDiversity: tool({
-                description: "Request an Alpha Diversity boxplot and statistics for the dataset given a metric (shannon, simpson, chao1) and an optional metadata group column.",
+                description: "Request an Alpha Diversity boxplot and statistics for the dataset given a metric (shannon, simpson, chao1) and an optional metadata group column. IMPORTANT: Always default to 'shannon' unless the user specifically asks for another metric.",
                 parameters: z.object({
-                    metric: z.string().describe("The alpha diversity metric to use: 'shannon', 'simpson', or 'chao1'"),
+                    metric: z.string().describe("The alpha diversity metric to use: 'shannon', 'simpson', or 'chao1'. Default is 'shannon'."),
                     groupCol: z.string().optional().describe("The metadata column to group by, if comparing groups"),
                 }),
                 // @ts-ignore
                 execute: async ({ metric, groupCol }: { metric: string, groupCol?: string }) => {
-                    const res = await getAlphaDiversity(projectId, metric, groupCol);
-                    return { success: res.success, requested: "alpha", plotly_spec: res.data || null };
+                    try {
+                        const res = await getAlphaDiversity(projectId, metric || "shannon", groupCol);
+                        if (!res.success) {
+                            return { success: false, error: res.error || "Failed to generate plot. The requested metric may not exist in this dataset.", requested: "alpha" };
+                        }
+                        return { success: true, requested: "alpha", plotly_spec: res.data || null };
+                    } catch (e: any) {
+                        return { success: false, error: e.message || "Unknown error generating Alpha Diversity plot.", requested: "alpha" };
+                    }
                 },
             }),
             visualizeBetaDiversity: tool({
@@ -66,8 +73,15 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }),
                 // @ts-ignore
                 execute: async ({ groupCol }: { groupCol?: string }) => {
-                    const res = await getBetaDiversity(projectId, groupCol);
-                    return { success: res.success, requested: "beta", plotly_spec: res.data || null };
+                    try {
+                        const res = await getBetaDiversity(projectId, groupCol);
+                        if (!res.success) {
+                            return { success: false, error: res.error || "Failed to generate Beta Diversity plot.", requested: "beta" };
+                        }
+                        return { success: true, requested: "beta", plotly_spec: res.data || null };
+                    } catch (e: any) {
+                        return { success: false, error: e.message || "Unknown error generating Beta Diversity plot.", requested: "beta" };
+                    }
                 }
             }),
             visualizeTaxonomy: tool({
@@ -77,8 +91,15 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 }),
                 // @ts-ignore
                 execute: async ({ level }: { level?: string }) => {
-                    const res = await getTaxonomy(projectId, level || "Phylum");
-                    return { success: res.success, requested: "taxonomy", plotly_spec: res.data || null };
+                    try {
+                        const res = await getTaxonomy(projectId, level || "Phylum");
+                        if (!res.success) {
+                            return { success: false, error: res.error || "Failed to generate Taxonomy plot.", requested: "taxonomy" };
+                        }
+                        return { success: true, requested: "taxonomy", plotly_spec: res.data || null };
+                    } catch (e: any) {
+                        return { success: false, error: e.message || "Unknown error generating Taxonomy plot.", requested: "taxonomy" };
+                    }
                 }
             }),
             visualizeRarefaction: tool({
@@ -86,8 +107,15 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
                 parameters: z.object({}),
                 // @ts-ignore
                 execute: async () => {
-                    const res = await getRarefaction(projectId);
-                    return { success: res.success, requested: "rarefaction", plotly_spec: res.data || null };
+                    try {
+                        const res = await getRarefaction(projectId);
+                        if (!res.success) {
+                            return { success: false, error: res.error || "Failed to generate Rarefaction plot.", requested: "rarefaction" };
+                        }
+                        return { success: true, requested: "rarefaction", plotly_spec: res.data || null };
+                    } catch (e: any) {
+                        return { success: false, error: e.message || "Unknown error generating Rarefaction curve.", requested: "rarefaction" };
+                    }
                 }
             })
         },
