@@ -26,33 +26,13 @@ import { getAlphaDiversity, getBetaDiversity, getTaxonomy, getRarefaction } from
 import { Suspense, useState, useEffect } from "react"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
-// These would normally be fetched from the backend via useEffect/Server Actions
-// Using an empty state initially with standard loading UI or placeholders
+import { useResultsStore } from "@/store/use-results-store"
+
 function ResultsTab({ projectId }: { projectId: string }) {
-
-  const [alphaPlotData, setAlphaPlotData] = useState<any>(null);
-  const [betaPlotData, setBetaPlotData] = useState<any>(null);
-  const [taxonomyPlotData, setTaxonomyPlotData] = useState<any>(null);
-  const [rarefactionPlotData, setRarefactionPlotData] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadData() {
-      setIsLoading(true);
-      const alphaResult = await getAlphaDiversity(projectId, "shannon", "group")
-      const betaResult = await getBetaDiversity(projectId, "group")
-      const taxonomyResult = await getTaxonomy(projectId, "Phylum")
-      const rarefactionResult = await getRarefaction(projectId)
-
-      if (alphaResult.success) setAlphaPlotData(alphaResult.data);
-      if (betaResult.success) setBetaPlotData(betaResult.data);
-      if (taxonomyResult.success) setTaxonomyPlotData(taxonomyResult.data);
-      if (rarefactionResult.success) setRarefactionPlotData(rarefactionResult.data);
-
-      setIsLoading(false);
-    }
-    loadData();
-  }, [projectId]);
+  const alphaPlotData = useResultsStore((state: any) => state.alpha);
+  const betaPlotData = useResultsStore((state: any) => state.beta);
+  const taxonomyPlotData = useResultsStore((state: any) => state.taxonomy);
+  const rarefactionPlotData = useResultsStore((state: any) => state.rarefaction);
 
   return (
     <div className="flex flex-col gap-3">
@@ -75,7 +55,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <BarChart3 className="size-8 text-muted-foreground/40" />
               <span className="text-xs text-muted-foreground">
-                Waiting for Beta Diversity Analysis...
+                Ask YARA to plot Beta Diversity or PCoA
               </span>
             </div>
           )}
@@ -119,7 +99,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <BarChart3 className="size-8 text-muted-foreground/40" />
               <span className="text-xs text-muted-foreground">
-                Waiting for Alpha Diversity Analysis...
+                Ask YARA to plot Alpha Diversity
               </span>
             </div>
           )}
@@ -163,7 +143,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <BarChart3 className="size-8 text-muted-foreground/40" />
               <span className="text-xs text-muted-foreground">
-                Waiting for Taxonomy Analysis...
+                Ask YARA to visualize Taxonomic Composition
               </span>
             </div>
           )}
@@ -197,7 +177,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <BarChart3 className="size-8 text-muted-foreground/40" />
               <span className="text-xs text-muted-foreground">
-                Waiting for Rarefaction Analysis...
+                Ask YARA to check Rarefaction Curves
               </span>
             </div>
           )}
@@ -277,9 +257,12 @@ function HistoryTab() {
 }
 
 export function ResultsPanel({ className, projectId }: { className?: string; projectId: string }) {
+  const activeTab = useResultsStore((state: any) => state.activeTab === 'files' || state.activeTab === 'history' ? state.activeTab : 'results');
+  const setActiveTab = useResultsStore((state: any) => state.setActiveTab);
+
   return (
     <div className={cn("flex h-full flex-col border-l border-border bg-background", className)}>
-      <Tabs defaultValue="results" className="flex h-full flex-col">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col">
         <div className="shrink-0 border-b border-border px-3 pt-3">
           <TabsList className="w-full">
             <TabsTrigger value="results" className="flex-1">
