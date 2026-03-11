@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { mockFiles, mockHistory } from "@/lib/mock-data"
+import { toast } from "sonner"
 
 const fileIcons: Record<string, string> = {
   ".qzv": "text-primary",
@@ -22,7 +23,7 @@ const fileIcons: Record<string, string> = {
   ".qza": "text-sky-600 dark:text-sky-400",
 }
 
-import { getAlphaDiversity, getBetaDiversity, getTaxonomy, getRarefaction } from "@/lib/actions"
+import { getAlphaDiversity, getBetaDiversity, getTaxonomy, getRarefaction, buildReport } from "@/lib/actions"
 import { Suspense, useState, useEffect } from "react"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
@@ -33,6 +34,36 @@ function ResultsTab({ projectId }: { projectId: string }) {
   const betaPlotData = useResultsStore((state: any) => state.beta);
   const taxonomyPlotData = useResultsStore((state: any) => state.taxonomy);
   const rarefactionPlotData = useResultsStore((state: any) => state.rarefaction);
+
+  const handleAddToReport = async (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction', plotData: any, title: string) => {
+    if (!plotData) return;
+    const divId = `plot-${type}`;
+    const graphDiv = document.getElementById(divId);
+    if (!graphDiv) {
+      toast.error("Gráfico não encontrado ou ainda carregando.");
+      return;
+    }
+    
+    try {
+      // @ts-ignore
+      const Plotly = (await import('plotly.js-dist-min')).default;
+      const b64 = await Plotly.toImage(graphDiv as any, { format: 'png', width: 800, height: 600 });
+      
+      useResultsStore.getState().addReportItem({
+        id: `${type}-${Date.now()}`,
+        type: 'plot',
+        title,
+        contentData: plotData,
+        base64Image: b64,
+      });
+      
+      useResultsStore.getState().setActiveTab('report');
+      toast.success(`${title} adicionado ao relatório!`);
+    } catch (e) {
+      console.error(e);
+      toast.error("Erro ao capturar gráfico.");
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -48,7 +79,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
           {betaPlotData ? (
             <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
               <div className="min-w-[500px] min-h-[400px] w-full h-full">
-                <PlotlyPlot data={(betaPlotData as any).data} layout={(betaPlotData as any).layout} />
+                <PlotlyPlot divId="plot-beta" data={(betaPlotData as any).data} layout={(betaPlotData as any).layout} />
               </div>
             </Suspense>
           ) : (
@@ -73,6 +104,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
             variant="ghost"
             size="sm"
             className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => handleAddToReport('beta', betaPlotData, 'Beta Diversity (PCoA)')}
           >
             <Plus className="size-3.5" />
             Add to Report
@@ -92,7 +124,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
           {alphaPlotData ? (
             <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
               <div className="min-w-[500px] min-h-[400px] w-full h-full">
-                <PlotlyPlot data={(alphaPlotData as any).data} layout={(alphaPlotData as any).layout} />
+                <PlotlyPlot divId="plot-alpha" data={(alphaPlotData as any).data} layout={(alphaPlotData as any).layout} />
               </div>
             </Suspense>
           ) : (
@@ -117,6 +149,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
             variant="ghost"
             size="sm"
             className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => handleAddToReport('alpha', alphaPlotData, 'Alpha Diversity')}
           >
             <Plus className="size-3.5" />
             Add to Report
@@ -136,7 +169,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
           {taxonomyPlotData ? (
             <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
               <div className="min-w-[500px] min-h-[400px] w-full h-full">
-                <PlotlyPlot data={(taxonomyPlotData as any).data} layout={(taxonomyPlotData as any).layout} />
+                <PlotlyPlot divId="plot-taxonomy" data={(taxonomyPlotData as any).data} layout={(taxonomyPlotData as any).layout} />
               </div>
             </Suspense>
           ) : (
@@ -152,7 +185,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
           <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
             <Download className="size-3.5" /> Download Data
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => handleAddToReport('taxonomy', taxonomyPlotData, 'Taxonomic Composition')}>
             <Plus className="size-3.5" /> Add to Report
           </Button>
         </div>
@@ -170,7 +203,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
           {rarefactionPlotData ? (
             <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
               <div className="min-w-[500px] min-h-[400px] w-full h-full">
-                <PlotlyPlot data={(rarefactionPlotData as any).data} layout={(rarefactionPlotData as any).layout} />
+                <PlotlyPlot divId="plot-rarefaction" data={(rarefactionPlotData as any).data} layout={(rarefactionPlotData as any).layout} />
               </div>
             </Suspense>
           ) : (
@@ -186,7 +219,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
           <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
             <Download className="size-3.5" /> Download Data
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => handleAddToReport('rarefaction', rarefactionPlotData, 'Rarefaction Curves')}>
             <Plus className="size-3.5" /> Add to Report
           </Button>
         </div>
@@ -256,8 +289,103 @@ function HistoryTab() {
   )
 }
 
+function ReportTab({ projectId }: { projectId: string }) {
+  const reportItems = useResultsStore((state: any) => state.reportItems);
+  const removeReportItem = useResultsStore((state: any) => state.removeReportItem);
+  const updateReportItemText = useResultsStore((state: any) => state.updateReportItemText);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExport = async (format: "pdf" | "docx") => {
+    if (reportItems.length === 0) {
+      toast.error("O relatório está vazio.");
+      return;
+    }
+    
+    setIsExporting(true);
+    const toastId = toast.loading(`Iniciando geração do ${format.toUpperCase()}...`);
+    
+    try {
+      const result = await buildReport(projectId, format, reportItems);
+      if (result.success && result.downloadUrl) {
+        toast.success(`${format.toUpperCase()} gerado com sucesso!`, { id: toastId });
+        
+        // Auto-download the file by creating a temporary anchor tag
+        const baseUrl = process.env.NEXT_PUBLIC_PYTHON_CORE_URL || "http://localhost:8000";
+        const fileUrl = `${baseUrl}${result.downloadUrl}`;
+        
+        const a = document.createElement("a");
+        a.href = fileUrl;
+        a.download = result.downloadUrl.split("/").pop() || `report.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        
+      } else {
+        toast.error(`Falha ao gerar ${format.toUpperCase()}: ${result.error}`, { id: toastId });
+      }
+    } catch (error) {
+       toast.error(`Falha na comunicação com o servidor.`, { id: toastId });
+    } finally {
+       setIsExporting(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-foreground">Construtor de Relatórios</h3>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={() => handleExport("docx")} disabled={isExporting}>
+             Export DOCX
+          </Button>
+          <Button size="sm" className="h-8 text-xs" onClick={() => handleExport("pdf")} disabled={isExporting}>
+             <FileText className="size-3.5 mr-1.5" />
+             Export PDF
+          </Button>
+        </div>
+      </div>
+      
+      {reportItems.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-[80px] text-center border rounded-lg border-dashed border-border bg-card/50 text-muted-foreground mt-2">
+          <FileText className="size-8 mb-3 opacity-20" />
+          <p className="text-sm font-medium">Seu relatório está vazio.</p>
+          <p className="text-xs max-w-[200px] mt-1">Gere análises no chat e clique em "Add to Report" nas figuras para compilá-las aqui.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 mt-2">
+          {reportItems.map((item: any) => (
+            <div key={item.id} className="border border-border rounded-lg p-3 bg-card shadow-sm flex flex-col gap-3">
+              <div className="flex items-center justify-between border-b border-border pb-2">
+                <span className="text-sm font-semibold">{item.title}</span>
+                <Button variant="ghost" size="icon-sm" className="h-6 w-6" onClick={() => removeReportItem(item.id)}>
+                  <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+                </Button>
+              </div>
+              
+              {item.type === 'plot' && item.base64Image && (
+                <div className="bg-background border border-border rounded overflow-hidden flex justify-center p-2 relative h-[250px]">
+                  <img src={item.base64Image} alt={item.title} className="w-full h-full object-contain" />
+                </div>
+              )}
+              
+              <textarea
+                className="w-full text-sm p-3 rounded-md border border-input bg-background resize-y min-h-[80px] placeholder:text-muted-foreground/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                placeholder="Adicione notas ou interprete os achados biológicos deste gráfico..."
+                value={item.textNotes || ''}
+                onChange={(e) => updateReportItemText(item.id, e.target.value)}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ResultsPanel({ className, projectId }: { className?: string; projectId: string }) {
-  const activeTab = useResultsStore((state: any) => state.activeTab === 'files' || state.activeTab === 'history' ? state.activeTab : 'results');
+  const activeTab = useResultsStore((state: any) => 
+    ['files', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
+  );
   const setActiveTab = useResultsStore((state: any) => state.setActiveTab);
 
   return (
@@ -267,6 +395,9 @@ export function ResultsPanel({ className, projectId }: { className?: string; pro
           <TabsList className="w-full">
             <TabsTrigger value="results" className="flex-1">
               Results
+            </TabsTrigger>
+            <TabsTrigger value="report" className="flex-1">
+              Report
             </TabsTrigger>
             <TabsTrigger value="files" className="flex-1">
               Files
@@ -280,6 +411,9 @@ export function ResultsPanel({ className, projectId }: { className?: string; pro
           <div className="p-3">
             <TabsContent value="results" className="mt-0">
               <ResultsTab projectId={projectId} />
+            </TabsContent>
+            <TabsContent value="report" className="mt-0">
+               <ReportTab projectId={projectId} />
             </TabsContent>
             <TabsContent value="files" className="mt-0">
               <FilesTab />
