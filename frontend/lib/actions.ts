@@ -222,37 +222,94 @@ export async function getProjectSession(projectId: string) {
                     const text = typeof m.content === 'string' ? m.content : (m.parts?.find((p: any) => p.type === 'text')?.text || '');
                     uiMessages.push({ id: msgId, role: 'user', content: text, parts: [{ type: 'text', text }] });
                 } else if (m.role === 'assistant') {
-                    if (typeof m.content === 'string') {
-                        uiMessages.push({ id: msgId, role: 'assistant', content: m.content, parts: [{ type: 'text', text: m.content }] });
-                    } else if (Array.isArray(m.content) || Array.isArray(m.parts)) {
-                        const items = Array.isArray(m.content) ? m.content : m.parts;
-                        const textContent = items.find((c: any) => c.type === 'text')?.text || '';
-                        const toolCalls = items.filter((c: any) => c.type === 'tool-call');
+                    const textContent = typeof m.content === 'string' 
+                        ? m.content 
+                        : ((Array.isArray(m.content) ? m.content : m.parts)?.find((c: any) => c.type === 'text')?.text || '');
+                        
+                    // Initialize parts array with text content if present
+                    const parts: any[] = textContent ? [{ type: 'text', text: textContent }] : [];
+                    let toolInvocations: any[] = [];
 
-                        const parts: any[] = [{ type: 'text', text: textContent }];
+                    // AI SDK useChat payload often puts tools natively in `m.toolInvocations`
+                    if (m.toolInvocations && Array.isArray(m.toolInvocations)) {
+                        toolInvocations = m.toolInvocations;
+                        m.toolInvocations.forEach((ti: any) => {
+                            // Enforce completed states for historical tools to prevent LLM API crash
+                            const forceResolvedState = (ti.state === 'call' || !ti.result) ? 'result' : ti.state;
+                            let forceResolvedResult = (ti.state === 'call' || !ti.result) ? { success: false, error: "A análise foi interrompida ou falhou silenciosamente antes de concluir." } : ti.result;
+                            
+                            // Unwrap Vercel's { type, value } serialization wrapper for large payloads
+                            if (forceResolvedResult && typeof forceResolvedResult === 'object' && 'type' in forceResolvedResult && 'value' in forceResolvedResult && !forceResolvedResult.plotly_spec) {
+                                forceResolvedResult = forceResolvedResult.value;
+                                if (typeof forceResolvedResult === 'string') {
+                                    try { forceResolvedResult = JSON.parse(forceResolvedResult); } catch (e) { forceResolvedResult = { success: false, error: forceResolvedResult }; }
+                                }
+                            }
+
+                            // Sync unwrapped result back to the root `toolInvocations` object
+                            ti.state = forceResolvedState;
+                            ti.result = forceResolvedResult;
+
+                            parts.push({
+                                type: `tool-${ti.toolName}`,
+                                toolCallId: ti.toolCallId,
+                                toolName: ti.toolName,
+                                args: ti.args,
+                                state: forceResolvedState,
+                                result: forceResolvedResult
+                            });
+                        });
+                    } 
+                    // Fallback for AI Core format where tools are in `parts` or `content` array
+                    else if (Array.isArray(m.content) || Array.isArray(m.parts)) {
+                        const items = Array.isArray(m.content) ? m.content : m.parts;
+                        const toolCalls = items.filter((c: any) => c.type === 'tool-call');
                         toolCalls.forEach((tc: any) => {
+                            const forceResolvedState = (tc.state === 'call' || !tc.result) ? 'result' : tc.state;
+                            let forceResolvedResult = (tc.state === 'call' || !tc.result) ? { success: false, error: "A análise foi interrompida ou falhou silenciosamente antes de concluir." } : tc.result;
+                            
+                            // Unwrap Vercel's { type, value } serialization wrapper
+                            if (forceResolvedResult && typeof forceResolvedResult === 'object' && 'type' in forceResolvedResult && 'value' in forceResolvedResult && !forceResolvedResult.plotly_spec) {
+                                forceResolvedResult = forceResolvedResult.value;
+                                if (typeof forceResolvedResult === 'string') {
+                                    try { forceResolvedResult = JSON.parse(forceResolvedResult); } catch (e) { forceResolvedResult = { success: false, error: forceResolvedResult }; }
+                                }
+                            }
+
                             parts.push({
                                 type: `tool-${tc.toolName}`,
                                 toolCallId: tc.toolCallId,
                                 toolName: tc.toolName,
                                 args: tc.args || tc.input,
-                                state: 'call'
+                                state: forceResolvedState,
+                                result: forceResolvedResult
                             });
-                        });
-
-                        uiMessages.push({
-                            id: msgId,
-                            role: 'assistant',
-                            content: textContent,
-                            parts,
-                            toolInvocations: toolCalls.map((tc: any) => ({
-                                state: 'call',
+                            toolInvocations.push({
+                                state: forceResolvedState,
                                 toolCallId: tc.toolCallId,
                                 toolName: tc.toolName,
-                                args: tc.args || tc.input
-                            }))
+                                args: tc.args || tc.input,
+                                result: forceResolvedResult
+                            });
                         });
                     }
+
+                    // Also preserve incoming `m.parts` tool results if they are stored there directly
+                    if (m.parts && Array.isArray(m.parts)) {
+                        m.parts.forEach((p: any) => {
+                            if (p.type?.startsWith('tool-') && !parts.find(existing => existing.toolCallId === p.toolCallId)) {
+                                parts.push(p);
+                            }
+                        });
+                    }
+
+                    uiMessages.push({
+                        id: msgId,
+                        role: 'assistant',
+                        content: textContent,
+                        parts,
+                        toolInvocations
+                    });
                 } else if (m.role === 'tool') {
                     // Find the last assistant message and map tool results
                     const lastAsst = uiMessages[uiMessages.length - 1];
@@ -290,5 +347,32 @@ export async function getProjectSession(projectId: string) {
     } catch (error) {
         console.error("Failed to fetch project session:", error);
         return { success: false, messages: [] };
+    }
+}
+
+import { generateReport as apiGenerateReport } from "./api";
+
+export async function buildReport(projectId: string, format: "pdf" | "docx", items: any[]) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        const project = await prisma.project.findUnique({ where: { id: projectId } });
+        if (!project) throw new Error("Project not found");
+
+        const sections = items.map((item: any) => ({
+            title: item.title || "Seção de Análise",
+            content: item.textNotes || "",
+            image_base64: item.base64Image || undefined,
+            level: 2
+        }));
+
+        const result: any = await apiGenerateReport(sections, project.name, format);
+        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
+
+        return { success: true, downloadUrl: result.data?.path };
+    } catch (e: any) {
+        console.error(e);
+        return { success: false, error: e.message };
     }
 }

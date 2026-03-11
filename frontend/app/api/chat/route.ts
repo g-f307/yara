@@ -30,12 +30,65 @@ Responda sempre em português brasileiro de forma clara e objetiva para pesquisa
 O usuário enviou os arquivos referentes ao projeto com ID: ${projectId}.
 Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo do projeto.`;
 
-    const result = streamText({
-        model: google("gemini-2.5-flash"),
-        system: systemPrompt,
-        // convertToModelMessages converts UIMessage[] → ModelMessage[] (AI SDK v6 API)
-        messages: await convertToModelMessages(messages),
-        tools: {
+    // Find all toolCallIds that actually have a resolved 'tool' message in the history
+    const resolvedToolIds = new Set<string>();
+    messages.forEach((m: any) => {
+        if (m.role === 'tool' && Array.isArray(m.content)) {
+            m.content.forEach((c: any) => {
+                if (c.type === 'tool-result' && c.toolCallId) {
+                    resolvedToolIds.add(c.toolCallId);
+                }
+            });
+        }
+    });
+
+    // Sanitize the history to drop toolInvocations that lack a corresponding tool result
+    // This strictly prevents the AI_MissingToolResultsError that crashes the chat
+    const sanitizedMessages = messages.map((m: any) => {
+        if (m.role === 'assistant') {
+            const cleanMsg = { ...m };
+            
+            if (cleanMsg.toolInvocations) {
+                const validTools = cleanMsg.toolInvocations.filter((ti: any) => resolvedToolIds.has(ti.toolCallId));
+                if (validTools.length === 0) {
+                    delete cleanMsg.toolInvocations;
+                } else {
+                    cleanMsg.toolInvocations = validTools;
+                }
+            }
+
+            if (Array.isArray(cleanMsg.parts)) {
+                cleanMsg.parts = cleanMsg.parts.filter((p: any) => {
+                    if (p.type === 'tool-invocation' && p.toolInvocation) {
+                        return resolvedToolIds.has(p.toolInvocation.toolCallId);
+                    }
+                    if (p.type === 'tool-call') {
+                        return resolvedToolIds.has(p.toolCallId);
+                    }
+                    if (p.type?.startsWith('tool-') && p.type !== 'tool-call' && p.type !== 'tool-result') {
+                        return resolvedToolIds.has(p.toolCallId);
+                    }
+                    return true;
+                });
+                
+                // If we stripped all parts, ensure it has at least a text fallback
+                if (cleanMsg.parts.length === 0) {
+                    cleanMsg.parts = [{ type: 'text', text: cleanMsg.content || '' }];
+                }
+            }
+            
+            return cleanMsg;
+        }
+        return m;
+    });
+
+    try {
+        const result = streamText({
+            model: google("gemini-2.5-flash"),
+            system: systemPrompt,
+            // convertToModelMessages converts UIMessage[] → ModelMessage[] (AI SDK v6 API)
+            messages: await convertToModelMessages(sanitizedMessages),
+            tools: {
             parseData: tool({
                 description: "Parse and validate a QIIME 2 file (.qzv, .tsv, etc) associated with this project.",
                 parameters: z.object({
@@ -161,4 +214,8 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
     // toUIMessageStreamResponse() is the correct method for AI SDK v6 + DefaultChatTransport
     // It returns a Response with the UI message stream format that useChat expects
     return result.toUIMessageStreamResponse();
+} catch (e: any) {
+        console.error("FATAL ERROR IN AI CHAT STREAM:", e);
+        return new Response(e.message || "Failed to create stream", { status: 500 });
+    }
 }
