@@ -12,6 +12,10 @@ import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+import base64
+import tempfile
+import os
+
 
 
 class ReportGenerator:
@@ -59,6 +63,25 @@ class ReportGenerator:
             'path': image_path,
             'caption': caption,
             'width': width
+        })
+
+    def add_image_base64(self, base64_str: str, caption: str = ""):
+        """
+        Salva imagem base64 temporária e adiciona ao relatório
+        """
+        # Limpar prefixo do Data URL, se houver: data:image/png;base64,
+        if "," in base64_str:
+            base64_str = base64_str.split(",")[1]
+            
+        img_data = base64.b64decode(base64_str)
+        fd, temp_path = tempfile.mkstemp(suffix=".png")
+        with os.fdopen(fd, 'wb') as f:
+            f.write(img_data)
+            
+        self.images.append({
+            'path': temp_path,
+            'caption': caption,
+            'width': None
         })
     
     def add_table(self, df: pd.DataFrame, caption: str = ""):
@@ -278,6 +301,89 @@ class ReportGenerator:
         self.sections = []
         self.images = []
         self.tables = []
+
+    def generate_pdf(self, output_path: str = "relatorio.pdf") -> str:
+        """Gera relatório em PDF usando ReportLab"""
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
+            from reportlab.lib.styles import getSampleStyleSheet
+        except ImportError:
+            raise ImportError("Please install reportlab: pip install reportlab")
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        doc = SimpleDocTemplate(output_path, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+        styles = getSampleStyleSheet()
+        Story = []
+        
+        Story.append(Paragraph(self.project_name, styles['Title']))
+        Story.append(Paragraph(f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+        Story.append(Paragraph("Gerado por YARA", styles['Normal']))
+        Story.append(Spacer(1, 24))
+        
+        for section in self.sections:
+            style_name = f"Heading{section['level']}"
+            if style_name not in styles: style_name = 'Heading2'
+            Story.append(Paragraph(section['title'], styles[style_name]))
+            
+            for p in section['content'].split('\n'):
+                if p.strip():
+                    Story.append(Paragraph(p.strip(), styles['Normal']))
+            Story.append(Spacer(1, 12))
+            
+        if self.images:
+            Story.append(Paragraph("Visualizações", styles['Heading2']))
+            for img in self.images:
+                if img['caption']:
+                    Story.append(Paragraph(img['caption'], styles['Heading3']))
+                
+                try:
+                    rl_img = RLImage(img['path'])
+                    # A4 width is ~595. Margins = 144. Max width = 451.
+                    if rl_img.drawWidth > 450:
+                        ratio = 450 / rl_img.drawWidth
+                        rl_img.drawHeight = rl_img.drawHeight * ratio
+                        rl_img.drawWidth = 450
+                    Story.append(rl_img)
+                except Exception as e:
+                    Story.append(Paragraph(f"[Erro ao carregar imagem: {str(e)}]", styles['Normal']))
+                Story.append(Spacer(1, 12))
+                
+        doc.build(Story)
+        return output_path
+
+    def generate_docx(self, output_path: str = "relatorio.docx") -> str:
+        """Gera relatório em DOCX usando python-docx"""
+        try:
+            from docx import Document
+            from docx.shared import Inches
+        except ImportError:
+            raise ImportError("Please install python-docx: pip install python-docx")
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        doc = Document()
+        doc.add_heading(self.project_name, 0)
+        doc.add_paragraph(f"Data: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        doc.add_paragraph("Gerado por YARA")
+        
+        for section in self.sections:
+            doc.add_heading(section['title'], level=section['level'])
+            for p in section['content'].split('\n'):
+                if p.strip():
+                    doc.add_paragraph(p.strip())
+                    
+        if self.images:
+            doc.add_heading("Visualizações", level=2)
+            for img in self.images:
+                if img['caption']:
+                    doc.add_heading(img['caption'], level=3)
+                try:
+                    doc.add_picture(img['path'], width=Inches(6.0))
+                except Exception as e:
+                    doc.add_paragraph(f"[Erro ao carregar imagem: {str(e)}]")
+                    
+        doc.save(output_path)
+        return output_path
 
 
 def create_alpha_diversity_report(stats: Dict, output_format: str = "markdown") -> str:
