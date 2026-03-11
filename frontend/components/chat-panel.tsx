@@ -64,7 +64,16 @@ function MessageBubble({ message }: { message: any }) {
     const timeoutId = setTimeout(() => {
       mergedTools.forEach((tool: any) => {
         const isFinished = tool.state === "result" || !!tool.result;
-        const result = tool.result || tool.output;
+        let result = tool.result || tool.output;
+
+        // Unwrap React Server Component ({type, value}) serialization proxy for the store
+        if (result && typeof result === "object" && "type" in result && "value" in result && !result.plotly_spec) {
+          let val = result.value;
+          if (typeof val === "string") {
+            try { val = JSON.parse(val); } catch (e) {}
+          }
+          result = val;
+        }
         
         if (isFinished && result && (result.plotly_spec || result.data?.data)) {
           // Both `plotly_spec` and `result.data` structures handled
@@ -125,9 +134,19 @@ function MessageBubble({ message }: { message: any }) {
         {mergedTools.length > 0 && (
           <div className="flex flex-col gap-3 mt-2 w-full">
             {mergedTools.map((toolPart: any, i: number) => {
-              const toolName = toolPart.toolName
               const isFinished = toolPart.state === "result" || !!toolPart.result
-              const result = toolPart.result || toolPart.output
+              let result = toolPart.result || toolPart.output
+
+              // Unwrap React Server Component ({type, value}) serialization proxy
+              if (result && typeof result === "object" && "type" in result && "value" in result && !result.plotly_spec) {
+                let val = result.value;
+                if (typeof val === "string") {
+                  try { val = JSON.parse(val); } catch (e) {}
+                }
+                result = val;
+              }
+
+              const toolName = toolPart.toolName
 
               if (["visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction"].includes(toolName)) {
                 return (
@@ -144,10 +163,15 @@ function MessageBubble({ message }: { message: any }) {
                       }
                     </div>
                     <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
-                      {!isFinished || (!result?.plotly_spec && !result?.data) ? (
+                      {!isFinished ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-3">
                           <div className="size-6 animate-spin rounded-full border-b-2 border-primary" />
                           <span className="text-xs">Processando dados...</span>
+                        </div>
+                      ) : result?.error ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center text-destructive gap-2 p-4 text-center">
+                          <span className="text-sm font-medium">A análise falhou</span>
+                          <span className="text-xs text-muted-foreground">{result.error}</span>
                         </div>
                       ) : (
                         <Suspense fallback={<div className="flex w-full h-full items-center justify-center"><div className="size-6 rounded-full border-b-2 border-primary animate-spin" /></div>}>

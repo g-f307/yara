@@ -130,7 +130,7 @@ export async function compareStatistics(
 }
 
 export async function generateReport(
-    sections: { title: string; content: string; level?: number }[],
+    sections: { title: string; content: string; level?: number; image_base64?: string }[],
     projectName = "Análise QIIME 2",
     format: "pdf" | "docx" = "pdf"
 ) {

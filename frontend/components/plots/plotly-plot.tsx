@@ -20,9 +20,10 @@ interface PlotlyPlotProps {
     layout?: Partial<Layout>;
     title?: string;
     height?: number;
+    divId?: string;
 }
 
-export function PlotlyPlot({ data, layout = {}, title, height = 400 }: PlotlyPlotProps) {
+export function PlotlyPlot({ data, layout = {}, title, height = 400, divId }: PlotlyPlotProps) {
     const { theme } = useTheme();
     const isDark = theme === "dark";
 
@@ -57,6 +58,7 @@ export function PlotlyPlot({ data, layout = {}, title, height = 400 }: PlotlyPlo
     return (
         <div className="w-full flex justify-center">
             <Plot
+                divId={divId}
                 data={data}
                 layout={baseLayout}
                 useResizeHandler={true}
