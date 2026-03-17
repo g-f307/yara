@@ -1,4 +1,4 @@
-import { getUserProjects, getProjectSession } from "@/lib/actions"
+import { getUserProjects, getProjectSession, getProjectFiles, getProjectSessions } from "@/lib/actions"
 import ProjectLayoutClient from "./client-page"
 import { SidebarProject } from "@/components/project-sidebar"
 import { syncProjectFiles } from "@/lib/api"
@@ -35,10 +35,21 @@ export default async function ProjectPage({
     }
   }
 
-  // Fetch past chat session
-  const sessionResult = await getProjectSession(projectId);
+  // Fetch past chat session and project files/history in parallel
+  const [filesResult, sessionsResult, sessionResult] = await Promise.all([
+    getProjectFiles(projectId),
+    getProjectSessions(projectId),
+    getProjectSession(projectId)
+  ]);
+
   const initialMessages = sessionResult.success ? sessionResult.messages : [];
   console.log("INITIAL MESSAGES FROM DB:", initialMessages.length, initialMessages);
 
-  return <ProjectLayoutClient projectId={projectId} projects={sidebarProjects} initialMessages={initialMessages} />
+  return <ProjectLayoutClient 
+    projectId={projectId} 
+    projects={sidebarProjects} 
+    initialMessages={initialMessages} 
+    projectFiles={filesResult.success ? filesResult.files : []}
+    projectSessions={sessionsResult.success ? sessionsResult.sessions : []}
+  />
 }

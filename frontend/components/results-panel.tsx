@@ -13,7 +13,6 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { mockFiles, mockHistory } from "@/lib/mock-data"
 import { toast } from "sonner"
 
 const fileIcons: Record<string, string> = {
@@ -228,10 +227,19 @@ function ResultsTab({ projectId }: { projectId: string }) {
   )
 }
 
-function FilesTab() {
+function FilesTab({ files }: { files: any[] }) {
+  if (!files || files.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <File className="size-8 mb-2 opacity-20" />
+        <p className="text-sm">Nenhum arquivo enviado ainda.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1">
-      {mockFiles.map((file) => (
+      {files.map((file) => (
         <div
           key={file.id}
           className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted"
@@ -244,27 +252,28 @@ function FilesTab() {
               {file.name}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {file.size} — {file.uploadDate}
+              {(file.size / 1024 / 1024).toFixed(1)} MB — {new Date(file.createdAt).toLocaleDateString("pt-BR")}
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive-foreground transition-opacity"
-            aria-label={`Delete ${file.name}`}
-          >
-            <Trash2 className="size-3.5" />
-          </Button>
         </div>
       ))}
     </div>
   )
 }
 
-function HistoryTab() {
+function HistoryTab({ sessions }: { sessions: any[] }) {
+  if (!sessions || sessions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+        <Clock className="size-8 mb-2 opacity-20" />
+        <p className="text-sm">Nenhum histórico encontrado.</p>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-1">
-      {mockHistory.map((entry) => (
+      {sessions.map((entry) => (
         <div
           key={entry.id}
           className="flex gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted"
@@ -274,13 +283,13 @@ function HistoryTab() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground">
-              {entry.name}
+              Sessão de Análise
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {entry.timestamp}
+              {new Date(entry.createdAt).toLocaleString("pt-BR")}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-              {entry.summary}
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed truncate">
+              ID: {entry.id}
             </p>
           </div>
         </div>
@@ -382,7 +391,7 @@ function ReportTab({ projectId }: { projectId: string }) {
   );
 }
 
-export function ResultsPanel({ className, projectId }: { className?: string; projectId: string }) {
+export function ResultsPanel({ className, projectId, files = [], sessions = [] }: { className?: string; projectId: string; files?: any[]; sessions?: any[] }) {
   const activeTab = useResultsStore((state: any) => 
     ['files', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
   );
@@ -416,10 +425,10 @@ export function ResultsPanel({ className, projectId }: { className?: string; pro
                <ReportTab projectId={projectId} />
             </TabsContent>
             <TabsContent value="files" className="mt-0">
-              <FilesTab />
+              <FilesTab files={files} />
             </TabsContent>
             <TabsContent value="history" className="mt-0">
-              <HistoryTab />
+              <HistoryTab sessions={sessions} />
             </TabsContent>
           </div>
         </div>

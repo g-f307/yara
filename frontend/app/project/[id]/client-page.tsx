@@ -9,23 +9,31 @@ import { ProjectSidebar, type SidebarProject } from "@/components/project-sideba
 import { ResultsPanel } from "@/components/results-panel"
 import { ChatPanel } from "@/components/chat-panel"
 import { FileUpload } from "@/components/file-upload"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { UploadDropzone } from "@/lib/uploadthing"
 import { useRouter } from "next/navigation"
+import { useResultsStore } from "@/store/use-results-store"
 
 interface ProjectLayoutClientProps {
     projectId: string;
     projects: SidebarProject[];
     initialMessages?: any[];
+    projectFiles?: any[];
+    projectSessions?: any[];
 }
 
-export default function ProjectLayoutClient({ projectId, projects, initialMessages }: ProjectLayoutClientProps) {
+export default function ProjectLayoutClient({ projectId, projects, initialMessages, projectFiles, projectSessions }: ProjectLayoutClientProps) {
     const router = useRouter();
+    const resetStore = useResultsStore((state: any) => state.reset);
     const currentProject = projects.find(p => p.id === projectId);
     const [hasData, setHasData] = useState(() => {
         if (currentProject && currentProject.fileCount > 0) return true;
         return false;
     });
+
+    useEffect(() => {
+        resetStore();
+    }, [projectId, resetStore]);
 
     return (
         <div className="fixed inset-0 flex bg-background text-foreground overflow-hidden">
@@ -50,7 +58,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
 
                             {/* Analysis/Results Panel */}
                             <ResizablePanel defaultSize={55} minSize={40}>
-                                <ResultsPanel projectId={projectId} />
+                                <ResultsPanel projectId={projectId} files={projectFiles} sessions={projectSessions} />
                             </ResizablePanel>
                         </ResizablePanelGroup>
                     ) : (
