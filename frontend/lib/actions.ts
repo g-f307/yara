@@ -90,10 +90,24 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles } from "./api";
 
 async function ensureBackendSynched(projectId: string) {
+    const pythonCoreUrl = process.env.PYTHON_CORE_URL || "http://localhost:8000";
+
+    // Fast check if Python backend already has the files downloaded
+    try {
+        const check = await fetch(`${pythonCoreUrl}/api/project/status/${projectId}`, { cache: 'no-store' });
+        if (check.ok) {
+            const { synced } = await check.json();
+            if (synced) return; // Exit early, skipping database query and sync trigger
+        }
+    } catch (e) {
+        console.warn("Could not check python backend sync status, falling back to force sync.", e);
+    }
+
     const project = await prisma.project.findUnique({
         where: { id: projectId },
         include: { files: true }
     });
+    
     if (project && project.files.length > 0) {
         await syncProjectFiles(projectId, project.files.map((f: any) => ({
             id: f.id,
@@ -210,147 +224,121 @@ export async function getProjectSession(projectId: string) {
             orderBy: { createdAt: "desc" },
         });
 
-        if (session && session.messages) {
-            const coreMessages = JSON.parse(session.messages as string);
+        if (!session?.messages) {
+            return { success: true, messages: [] };
+        }
+
+        try {
+            const stored: any[] = JSON.parse(session.messages as string);
             const uiMessages: any[] = [];
 
-            for (let i = 0; i < coreMessages.length; i++) {
-                const m = coreMessages[i];
-                const msgId = m.id || `msg-${i}-${Date.now()}`;
+            for (const m of stored) {
+                if (!m?.id || !m?.role) continue;
+
+                if (m.role === 'tool') continue; // legacy — skip bare tool entries
 
                 if (m.role === 'user') {
-                    const text = typeof m.content === 'string' ? m.content : (m.parts?.find((p: any) => p.type === 'text')?.text || '');
-                    uiMessages.push({ id: msgId, role: 'user', content: text, parts: [{ type: 'text', text }] });
-                } else if (m.role === 'assistant') {
-                    const textContent = typeof m.content === 'string' 
-                        ? m.content 
-                        : ((Array.isArray(m.content) ? m.content : m.parts)?.find((c: any) => c.type === 'text')?.text || '');
-                        
-                    // Initialize parts array with text content if present
-                    const parts: any[] = textContent ? [{ type: 'text', text: textContent }] : [];
-                    let toolInvocations: any[] = [];
-
-                    // AI SDK useChat payload often puts tools natively in `m.toolInvocations`
-                    if (m.toolInvocations && Array.isArray(m.toolInvocations)) {
-                        toolInvocations = m.toolInvocations;
-                        m.toolInvocations.forEach((ti: any) => {
-                            // Enforce completed states for historical tools to prevent LLM API crash
-                            const forceResolvedState = (ti.state === 'call' || !ti.result) ? 'result' : ti.state;
-                            let forceResolvedResult = (ti.state === 'call' || !ti.result) ? { success: false, error: "A análise foi interrompida ou falhou silenciosamente antes de concluir." } : ti.result;
-                            
-                            // Unwrap Vercel's { type, value } serialization wrapper for large payloads
-                            if (forceResolvedResult && typeof forceResolvedResult === 'object' && 'type' in forceResolvedResult && 'value' in forceResolvedResult && !forceResolvedResult.plotly_spec) {
-                                forceResolvedResult = forceResolvedResult.value;
-                                if (typeof forceResolvedResult === 'string') {
-                                    try { forceResolvedResult = JSON.parse(forceResolvedResult); } catch (e) { forceResolvedResult = { success: false, error: forceResolvedResult }; }
-                                }
-                            }
-
-                            // Sync unwrapped result back to the root `toolInvocations` object
-                            ti.state = forceResolvedState;
-                            ti.result = forceResolvedResult;
-
-                            parts.push({
-                                type: `tool-${ti.toolName}`,
-                                toolCallId: ti.toolCallId,
-                                toolName: ti.toolName,
-                                args: ti.args,
-                                state: forceResolvedState,
-                                result: forceResolvedResult
-                            });
-                        });
-                    } 
-                    // Fallback for AI Core format where tools are in `parts` or `content` array
-                    else if (Array.isArray(m.content) || Array.isArray(m.parts)) {
-                        const items = Array.isArray(m.content) ? m.content : m.parts;
-                        const toolCalls = items.filter((c: any) => c.type === 'tool-call');
-                        toolCalls.forEach((tc: any) => {
-                            const forceResolvedState = (tc.state === 'call' || !tc.result) ? 'result' : tc.state;
-                            let forceResolvedResult = (tc.state === 'call' || !tc.result) ? { success: false, error: "A análise foi interrompida ou falhou silenciosamente antes de concluir." } : tc.result;
-                            
-                            // Unwrap Vercel's { type, value } serialization wrapper
-                            if (forceResolvedResult && typeof forceResolvedResult === 'object' && 'type' in forceResolvedResult && 'value' in forceResolvedResult && !forceResolvedResult.plotly_spec) {
-                                forceResolvedResult = forceResolvedResult.value;
-                                if (typeof forceResolvedResult === 'string') {
-                                    try { forceResolvedResult = JSON.parse(forceResolvedResult); } catch (e) { forceResolvedResult = { success: false, error: forceResolvedResult }; }
-                                }
-                            }
-
-                            parts.push({
-                                type: `tool-${tc.toolName}`,
-                                toolCallId: tc.toolCallId,
-                                toolName: tc.toolName,
-                                args: tc.args || tc.input,
-                                state: forceResolvedState,
-                                result: forceResolvedResult
-                            });
-                            toolInvocations.push({
-                                state: forceResolvedState,
-                                toolCallId: tc.toolCallId,
-                                toolName: tc.toolName,
-                                args: tc.args || tc.input,
-                                result: forceResolvedResult
-                            });
-                        });
-                    }
-
-                    // Also preserve incoming `m.parts` tool results if they are stored there directly
-                    if (m.parts && Array.isArray(m.parts)) {
-                        m.parts.forEach((p: any) => {
-                            if (p.type?.startsWith('tool-') && !parts.find(existing => existing.toolCallId === p.toolCallId)) {
-                                parts.push(p);
-                            }
-                        });
-                    }
-
+                    // Ensure content is always the text string
+                    const text = typeof m.content === 'string' && m.content
+                        ? m.content
+                        : (m.parts?.find((p: any) => p.type === 'text')?.text ?? '');
                     uiMessages.push({
-                        id: msgId,
-                        role: 'assistant',
-                        content: textContent,
-                        parts,
-                        toolInvocations
+                        id: m.id,
+                        role: 'user',
+                        content: text,
+                        parts: [{ type: 'text', text }],
                     });
-                } else if (m.role === 'tool') {
-                    // Find the last assistant message and map tool results
-                    const lastAsst = uiMessages[uiMessages.length - 1];
-                    if (lastAsst && lastAsst.role === 'assistant') {
-                        const results = Array.isArray(m.content) ? m.content : [];
-                        for (const tr of results) {
-                            if (tr.type === 'tool-result') {
-                                // Update parts array directly
-                                if (lastAsst.parts) {
-                                    const pIdx = lastAsst.parts.findIndex((p: any) => p.toolCallId === tr.toolCallId);
-                                    if (pIdx !== -1) {
-                                        lastAsst.parts[pIdx].state = 'result';
-                                        lastAsst.parts[pIdx].result = tr.output || tr.result;
-                                    }
-                                }
+                    continue;
+                }
 
-                                // Update toolInvocations fallback
-                                if (lastAsst.toolInvocations) {
-                                    const ti = lastAsst.toolInvocations.find((t: any) => t.toolCallId === tr.toolCallId);
-                                    if (ti) {
-                                        ti.state = 'result';
-                                        ti.result = tr.output || tr.result;
-                                    }
-                                }
+                if (m.role === 'assistant') {
+                    const text = typeof m.content === 'string' ? m.content : '';
+                    const parts: any[] = text ? [{ type: 'text', text }] : [];
+                    const toolInvocations: any[] = [];
+
+                    // Restore toolInvocations — the new serializer stores them with state:'result'
+                    if (Array.isArray(m.toolInvocations) && m.toolInvocations.length > 0) {
+                        for (const ti of m.toolInvocations) {
+                            // Force completed state so the LLM API never receives an unresolved call
+                            const result = ti.result ?? { success: false, error: 'Resultado não disponível.' };
+                            toolInvocations.push({ ...ti, state: 'result', result });
+                            // Also add to parts so MessageBubble can render the graph card
+                            if (!parts.find((p: any) => p.toolCallId === ti.toolCallId)) {
+                                parts.push({
+                                    type: `tool-${ti.toolName}`,
+                                    toolCallId: ti.toolCallId,
+                                    toolName: ti.toolName,
+                                    args: ti.args,
+                                    state: 'result',
+                                    result,
+                                });
+                            }
+                        }
+                    } else if (Array.isArray(m.parts)) {
+                        // Fallback: restore from parts (handles messages saved by older serializer)
+                        for (const p of m.parts) {
+                            if (p.type?.startsWith('tool-') && p.toolCallId) {
+                                const result = p.result ?? { success: false, error: 'Resultado não disponível.' };
+                                toolInvocations.push({
+                                    state: 'result',
+                                    toolCallId: p.toolCallId,
+                                    toolName: p.toolName,
+                                    args: p.args,
+                                    result,
+                                });
+                                parts.push({ ...p, state: 'result', result });
                             }
                         }
                     }
+
+                    uiMessages.push({ id: m.id, role: 'assistant', content: text, parts, toolInvocations });
                 }
             }
 
             return { success: true, messages: uiMessages };
+        } catch (e) {
+            console.error("Failed to parse session messages", e);
+            return { success: true, messages: [] };
         }
-
-        return { success: true, messages: [] };
     } catch (error) {
         console.error("Failed to fetch project session:", error);
         return { success: false, messages: [] };
     }
 }
 
+
 import { generateReport as apiGenerateReport } from "./api";
+
+export async function getProjectFiles(projectId: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        const files = await prisma.file.findMany({
+            where: { projectId },
+            orderBy: { createdAt: "desc" }
+        });
+        return { success: true, files };
+    } catch (e: any) {
+        return { success: false, files: [], error: e.message };
+    }
+}
+
+export async function getProjectSessions(projectId: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        const sessions = await prisma.analysisSession.findMany({
+            where: { projectId },
+            orderBy: { createdAt: "desc" },
+            take: 20
+        });
+        return { success: true, sessions };
+    } catch (e: any) {
+        return { success: false, sessions: [], error: e.message };
+    }
+}
 
 export async function buildReport(projectId: string, format: "pdf" | "docx", items: any[]) {
     try {
