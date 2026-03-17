@@ -19,7 +19,7 @@ import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
 import { useResultsStore } from "@/store/use-results-store"
 
-function MessageBubble({ message }: { message: any }) {
+function MessageBubble({ message, previousToolNames = new Set() }: { message: any; previousToolNames?: Set<string> }) {
   const isUser = message.role === "user"
 
   // Unified data access for historical (DB) and active stream messages
@@ -33,15 +33,32 @@ function MessageBubble({ message }: { message: any }) {
   const toolInvocations = message.toolInvocations || [];
   const parts = message.parts || [];
 
-  const streamToolParts = parts.filter((p: any) =>
-    p.type?.startsWith("tool-") || p.type === "dynamic-tool"
-  ).map((p: any, idx: number) => ({
-    toolCallId: p.toolCallId || p.toolName || `tool-fallback-${idx}`,
-    toolName: p.type?.replace(/^tool-/, "") ?? p.toolName,
-    state: p.state === "output-available" || p.output || p.result ? "result" : "call",
-    result: p.output || p.result,
-    args: p.args || p.input
-  }));
+  // AI SDK v6 emits parts with type 'tool-invocation' where actual data is nested
+  // inside p.toolInvocation. Older/persisted parts use type 'tool-{toolName}' with flat structure.
+  const streamToolParts = parts
+    .filter((p: any) => p.type?.startsWith("tool-") || p.type === "dynamic-tool")
+    .map((p: any, idx: number) => {
+      // AI SDK v6 streaming format: { type: 'tool-invocation', toolInvocation: { toolCallId, toolName, state, result, args } }
+      if (p.type === "tool-invocation" && p.toolInvocation) {
+        const ti = p.toolInvocation;
+        const isFinished = ti.state === "result" || ti.state === "output-available" || !!ti.result;
+        return {
+          toolCallId: ti.toolCallId,
+          toolName: ti.toolName,
+          state: isFinished ? "result" : "call",
+          result: ti.result ?? ti.output,
+          args: ti.args ?? ti.input,
+        };
+      }
+      // Persisted / legacy flat format: { type: 'tool-{toolName}', toolCallId, toolName, state, result, args }
+      return {
+        toolCallId: p.toolCallId || p.toolName || `tool-fallback-${idx}`,
+        toolName: p.toolName ?? p.type?.replace(/^tool-/, ""),
+        state: p.state === "output-available" || p.output || p.result ? "result" : "call",
+        result: p.output || p.result,
+        args: p.args || p.input,
+      };
+    });
 
   const allToolsMap = new Map();
   [...toolInvocations, ...streamToolParts].forEach((t: any) => {
@@ -51,7 +68,10 @@ function MessageBubble({ message }: { message: any }) {
       allToolsMap.set(t.toolCallId, t); // Prefer populated result
     }
   });
-  const mergedTools = Array.from(allToolsMap.values());
+  // Only render tools that are NEW in this message (not shown in a previous bubble)
+  const mergedTools = Array.from(allToolsMap.values()).filter(
+    (t: any) => !previousToolNames.has(t.toolName)
+  );
 
   const setPlotData = useResultsStore((state: any) => state.setPlotData);
   const activeTab = useResultsStore((state: any) => state.activeTab);
@@ -244,11 +264,18 @@ export function ChatPanel({
     }),
   });
 
+  const prevProjectRef = useRef<string | null>(null);
   useEffect(() => {
-    if (initialMessages && initialMessages.length > 0 && messages.length === 0) {
+    const isProjectChange = prevProjectRef.current !== projectId;
+    prevProjectRef.current = projectId;
+    // Force-reset messages when project changes OR when starting empty.
+    // Needed because useChat caches state by id in memory — navigating away and
+    // back would otherwise keep stale messages and ignore initialMessages from DB.
+    if (isProjectChange || (initialMessages.length > 0 && messages.length === 0)) {
       setMessages(initialMessages);
     }
-  }, [initialMessages, messages.length, setMessages]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, initialMessages]);
 
   const [input, setInput] = useState("")
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -313,9 +340,21 @@ export function ChatPanel({
               Comece enviando uma mensagem ou fazendo upload de mais arquivos.
             </div>
           )}
-          {messages.map((message: any) => (
-            <MessageBubble key={message.id} message={message} />
-          ))}
+          {(() => {
+            const seenToolNames = new Set<string>();
+            return messages.map((message: any) => {
+              const prev = new Set(seenToolNames);
+              // Collect tool names from this message to exclude from future bubbles
+              const tools: any[] = message.toolInvocations || [];
+              (message.parts || []).forEach((p: any) => {
+                if (p.type === 'tool-invocation' && p.toolInvocation?.toolName) tools.push(p.toolInvocation);
+                if (p.toolName && p.type?.startsWith('tool-')) tools.push(p);
+              });
+              tools.forEach((t: any) => { if (t.toolName) seenToolNames.add(t.toolName); });
+              return <MessageBubble key={message.id} message={message} previousToolNames={prev} />;
+            });
+          })()}
+
           {isLoading && (
             <div className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
               <div className="size-4 animate-spin rounded-full border-b-2 border-primary"></div>
