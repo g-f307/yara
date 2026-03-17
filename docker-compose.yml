@@ -8,6 +8,7 @@ services:
     volumes:
       - ./backend:/app
       - ./data/qiime2:/app/data/qiime2
+      - ./backend/uploads:/app/uploads
     environment:
       - STORAGE_PATH=/app/uploads
     restart: unless-stopped

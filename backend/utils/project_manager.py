@@ -4,7 +4,7 @@ from typing import List, Dict
 import aiofiles
 from pathlib import Path
 
-CACHE_DIR = "/tmp/yara_projects"
+CACHE_DIR = os.getenv("STORAGE_PATH", "./uploads")
 
 class ProjectManager:
     @staticmethod
