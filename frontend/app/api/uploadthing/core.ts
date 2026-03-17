@@ -6,6 +6,7 @@ if (typeof globalThis.crypto === "undefined") {
 
 import { createUploadthing, type FileRouter } from "uploadthing/next";
 import { UploadThingError } from "uploadthing/server";
+import { auth } from "@clerk/nextjs/server";
 
 const f = createUploadthing();
 
@@ -19,10 +20,10 @@ export const ourFileRouter = {
         .middleware(async ({ req }) => {
             console.log("UPLOADTHING MIDDLEWARE CALLED");
             // This code runs on your server before upload
-            // Here we would typically check auth via Clerk
-            // const user = await auth();
-            // if (!user) throw new UploadThingError("Unauthorized");
-            return { userId: "temp-user-id" };
+            // Here we check auth via Clerk
+            const { userId } = await auth();
+            if (!userId) throw new UploadThingError("Unauthorized");
+            return { userId };
         })
         .onUploadComplete(async ({ metadata, file }) => {
             // This code RUNS ON YOUR SERVER after upload
@@ -30,7 +31,7 @@ export const ourFileRouter = {
             console.log("file url", file.url);
 
             // We will save to Prisma DB in the UI or here later
-            return { uploadedBy: metadata.userId || "temp-user" };
+            return { uploadedBy: metadata.userId };
         }),
 } satisfies FileRouter;
 
