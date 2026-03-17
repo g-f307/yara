@@ -24,15 +24,43 @@ export async function POST(req: Request) {
         return new Response("Missing projectId", { status: 400 });
     }
 
-    // Define the YARA model and behavior
-    const systemPrompt = `Você é o YARA (Your Assistant for Results Analysis), um especialista em bioinformática e análise metagenômica usando QIIME 2.
-Responda sempre em português brasileiro de forma clara e objetiva para pesquisadores.
-O usuário enviou os arquivos referentes ao projeto com ID: ${projectId}.
-Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo do projeto.`;
-
-    // Find all toolCallIds that actually have a resolved 'tool' message in the history
+    // systemPrompt will be built after messages are parsed so we can inject resolvedToolNames
+    let systemPrompt = '';
+    // Build the set of resolved toolCallIds AND their tool names.
+    // The client sends UIMessages (not CoreMessages), so tool results are embedded as
+    // toolInvocations[].state === 'result' inside assistant messages — NOT as role:'tool' messages.
     const resolvedToolIds = new Set<string>();
+    const resolvedToolNames = new Set<string>(); // track names for system prompt injection
     messages.forEach((m: any) => {
+        // UIMessage format: toolInvocations on assistant messages
+        if (m.role === 'assistant' && Array.isArray(m.toolInvocations)) {
+            m.toolInvocations.forEach((ti: any) => {
+                if ((ti.state === 'result' || ti.result != null) && ti.toolCallId) {
+                    resolvedToolIds.add(ti.toolCallId);
+                    if (ti.toolName) resolvedToolNames.add(ti.toolName);
+                }
+            });
+        }
+        // UIMessage parts format: tool-invocation parts with state 'result'
+        if (m.role === 'assistant' && Array.isArray(m.parts)) {
+            m.parts.forEach((p: any) => {
+                if (p.type === 'tool-invocation' && p.toolInvocation) {
+                    const ti = p.toolInvocation;
+                    if ((ti.state === 'result' || ti.result != null) && ti.toolCallId) {
+                        resolvedToolIds.add(ti.toolCallId);
+                        if (ti.toolName) resolvedToolNames.add(ti.toolName);
+                    }
+                }
+                // Persisted flat format: type 'tool-{toolName}'
+                if (p.type?.startsWith('tool-') && p.type !== 'tool-invocation' && p.toolCallId) {
+                    if (p.state === 'result' || p.result != null) {
+                        resolvedToolIds.add(p.toolCallId);
+                        if (p.toolName) resolvedToolNames.add(p.toolName);
+                    }
+                }
+            });
+        }
+        // Legacy CoreMessage format fallback (role:'tool')
         if (m.role === 'tool' && Array.isArray(m.content)) {
             m.content.forEach((c: any) => {
                 if (c.type === 'tool-result' && c.toolCallId) {
@@ -42,179 +70,313 @@ Use a ferramenta "parseData" se o usuário pedir para ler ou validar um arquivo 
         }
     });
 
-    // Sanitize the history to drop toolInvocations that lack a corresponding tool result
-    // This strictly prevents the AI_MissingToolResultsError that crashes the chat
+    // Build the system prompt now that we know which tools have already been called
+    const alreadyCalledSection = resolvedToolNames.size > 0
+        ? `\n\nFERRAMENTAS JÁ EXECUTADAS NESTA SESSÃO (NÃO REPITA):\n${[...resolvedToolNames].map(n => `- ${n}`).join('\n')}\nNão chame nenhuma dessas ferramentas novamente, a menos que o usuário peça explicitamente para refazer a análise.`
+        : '';
+
+    systemPrompt = `Você é o YARA (Your Assistant for Results Analysis), um especialista em bioinformática e análise metagenômica 16S rRNA utilizando QIIME 2. Responda SEMPRE em português brasileiro.
+
+CAPACIDADES:
+Você pode gerar as seguintes visualizações chamando as ferramentas disponíveis:
+- visualizeAlphaDiversity: boxplot de diversidade alfa (Shannon, Simpson, Chao1)
+- visualizeBetaDiversity: PCoA de diversidade beta (Bray-Curtis)
+- visualizeTaxonomy: gráfico de barras de composição taxonômica
+- visualizeRarefaction: curvas de rarefação por amostra
+- parseData: valida/parseia arquivos QIIME2 do projeto
+
+REGRAS OBRIGATÓRIAS:
+1. Quando o usuário pedir um gráfico, SEMPRE chame a ferramenta correspondente. Nunca apenas descreva o gráfico ou diga que "está gerando" sem chamar a ferramenta.
+2. Chame APENAS a(s) ferramenta(s) que o usuário explicitamente solicitou. Não adicione gráficos extras não pedidos.
+3. Se a ferramenta retornar success:true, confirme que o gráfico foi gerado e descreva brevemente o resultado.
+4. Se a ferramenta retornar success:false, informe o erro ao usuário e sugira o que tentar.
+5. Seja objetivo e científico. Não especule sobre resultados sem dados.
+
+O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSection}`;
+
+
+    // Resolved ones must be preserved so the model knows what was already done.
     const sanitizedMessages = messages.map((m: any) => {
         if (m.role === 'assistant') {
             const cleanMsg = { ...m };
-            
-            if (cleanMsg.toolInvocations) {
-                const validTools = cleanMsg.toolInvocations.filter((ti: any) => resolvedToolIds.has(ti.toolCallId));
-                if (validTools.length === 0) {
-                    delete cleanMsg.toolInvocations;
-                } else {
-                    cleanMsg.toolInvocations = validTools;
-                }
+
+            if (Array.isArray(cleanMsg.toolInvocations)) {
+                // Keep resolved, drop pending (unresolved would cause AI_MissingToolResultsError)
+                cleanMsg.toolInvocations = cleanMsg.toolInvocations.filter(
+                    (ti: any) => ti.state === 'result' || ti.result != null
+                );
             }
 
             if (Array.isArray(cleanMsg.parts)) {
                 cleanMsg.parts = cleanMsg.parts.filter((p: any) => {
                     if (p.type === 'tool-invocation' && p.toolInvocation) {
-                        return resolvedToolIds.has(p.toolInvocation.toolCallId);
+                        const ti = p.toolInvocation;
+                        return ti.state === 'result' || ti.result != null;
                     }
                     if (p.type === 'tool-call') {
                         return resolvedToolIds.has(p.toolCallId);
                     }
-                    if (p.type?.startsWith('tool-') && p.type !== 'tool-call' && p.type !== 'tool-result') {
-                        return resolvedToolIds.has(p.toolCallId);
+                    if (p.type?.startsWith('tool-') && p.type !== 'tool-invocation' && p.type !== 'tool-result') {
+                        return p.state === 'result' || p.result != null;
                     }
                     return true;
                 });
-                
-                // If we stripped all parts, ensure it has at least a text fallback
+
+                // If all parts were stripped, fall back to text only
                 if (cleanMsg.parts.length === 0) {
                     cleanMsg.parts = [{ type: 'text', text: cleanMsg.content || '' }];
                 }
             }
-            
+
             return cleanMsg;
+        }
+        return m;
+    }).filter((m: any) => m.role !== 'tool');
+
+    // Before converting to model messages, strip tool-related parts from assistant messages.
+    // `convertToModelMessages` processes BOTH `toolInvocations` AND tool-typed `parts`,
+    // which causes duplicate tool-calls in the history — one with a result (from toolInvocations)
+    // and one without (from parts), triggering AI_MissingToolResultsError.
+    // toolInvocations already carries all tool context; parts only need text for the model.
+    const messagesForModel = sanitizedMessages.map((m: any) => {
+        if (m.role === 'assistant' && Array.isArray(m.parts)) {
+            return {
+                ...m,
+                parts: m.parts.filter((p: any) => p.type === 'text'),
+            };
         }
         return m;
     });
 
     try {
         const result = streamText({
-            model: google("gemini-2.5-flash"),
+            model: google("gemini-2.5-flash-lite"),
             system: systemPrompt,
-            // convertToModelMessages converts UIMessage[] → ModelMessage[] (AI SDK v6 API)
-            messages: await convertToModelMessages(sanitizedMessages),
+            messages: await convertToModelMessages(messagesForModel),
+
             tools: {
-            parseData: tool({
-                description: "Parse and validate a QIIME 2 file (.qzv, .tsv, etc) associated with this project.",
-                parameters: z.object({
-                    fileId: z.string().describe("The ID of the file to parse"),
+                parseData: tool({
+                    description: "Parse and validate a QIIME 2 file (.qzv, .tsv, etc) associated with this project.",
+                    parameters: z.object({
+                        fileId: z.string().describe("The ID of the file to parse"),
+                    }),
+                    // @ts-ignore
+                    execute: async ({ fileId }: { fileId: string }) => {
+                        const res = await parseFile(projectId, fileId);
+                        return res;
+                    },
                 }),
-                // @ts-ignore
-                execute: async ({ fileId }: { fileId: string }) => {
-                    const res = await parseFile(projectId, fileId);
-                    return res;
-                },
-            }),
-            visualizeAlphaDiversity: tool({
-                description: "Request an Alpha Diversity boxplot and statistics for the dataset given a metric (shannon, simpson, chao1) and an optional metadata group column. IMPORTANT: Always default to 'shannon' unless the user specifically asks for another metric.",
-                parameters: z.object({
-                    metric: z.string().describe("The alpha diversity metric to use: 'shannon', 'simpson', or 'chao1'. Default is 'shannon'."),
-                    groupCol: z.string().optional().describe("The metadata column to group by, if comparing groups"),
+                visualizeAlphaDiversity: tool({
+                    description: "Request an Alpha Diversity boxplot and statistics for the dataset given a metric (shannon, simpson, chao1) and an optional metadata group column. IMPORTANT: Always default to 'shannon' unless the user specifically asks for another metric.",
+                    parameters: z.object({
+                        metric: z.string().describe("The alpha diversity metric to use: 'shannon', 'simpson', or 'chao1'. Default is 'shannon'."),
+                        groupCol: z.string().optional().describe("The metadata column to group by, if comparing groups"),
+                    }),
+                    // @ts-ignore
+                    execute: async ({ metric, groupCol }: { metric: string, groupCol?: string }) => {
+                        try {
+                            const res = await getAlphaDiversity(projectId, metric || "shannon", groupCol);
+                            if (!res.success) {
+                                return { success: false, error: res.error || "Failed to generate plot. The requested metric may not exist in this dataset.", requested: "alpha" };
+                            }
+                            return { success: true, requested: "alpha", plotly_spec: res.data || null };
+                        } catch (e: any) {
+                            return { success: false, error: e.message || "Unknown error generating Alpha Diversity plot.", requested: "alpha" };
+                        }
+                    },
                 }),
-                // @ts-ignore
-                execute: async ({ metric, groupCol }: { metric: string, groupCol?: string }) => {
-                    try {
-                        const res = await getAlphaDiversity(projectId, metric || "shannon", groupCol);
-                        if (!res.success) {
-                            return { success: false, error: res.error || "Failed to generate plot. The requested metric may not exist in this dataset.", requested: "alpha" };
+                visualizeBetaDiversity: tool({
+                    description: "Request a Beta Diversity PCoA 2D or 3D scatter plot for the dataset.",
+                    parameters: z.object({
+                        groupCol: z.string().optional().describe("The metadata column to color the groups by"),
+                    }),
+                    // @ts-ignore
+                    execute: async ({ groupCol }: { groupCol?: string }) => {
+                        try {
+                            const res = await getBetaDiversity(projectId, groupCol);
+                            if (!res.success) {
+                                return { success: false, error: res.error || "Failed to generate Beta Diversity plot.", requested: "beta" };
+                            }
+                            return { success: true, requested: "beta", plotly_spec: res.data || null };
+                        } catch (e: any) {
+                            return { success: false, error: e.message || "Unknown error generating Beta Diversity plot.", requested: "beta" };
                         }
-                        return { success: true, requested: "alpha", plotly_spec: res.data || null };
-                    } catch (e: any) {
-                        return { success: false, error: e.message || "Unknown error generating Alpha Diversity plot.", requested: "alpha" };
                     }
-                },
-            }),
-            visualizeBetaDiversity: tool({
-                description: "Request a Beta Diversity PCoA 2D or 3D scatter plot for the dataset.",
-                parameters: z.object({
-                    groupCol: z.string().optional().describe("The metadata column to color the groups by"),
                 }),
-                // @ts-ignore
-                execute: async ({ groupCol }: { groupCol?: string }) => {
-                    try {
-                        const res = await getBetaDiversity(projectId, groupCol);
-                        if (!res.success) {
-                            return { success: false, error: res.error || "Failed to generate Beta Diversity plot.", requested: "beta" };
+                visualizeTaxonomy: tool({
+                    description: "Request a Taxonomy stacked barplot for the dataset. Shows the relative abundance of microbial taxa at a specific level.",
+                    parameters: z.object({
+                        level: z.string().optional().describe("The taxonomic level to summarize by ('Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species'). Defaults to 'Phylum'."),
+                    }),
+                    // @ts-ignore
+                    execute: async ({ level }: { level?: string }) => {
+                        try {
+                            const res = await getTaxonomy(projectId, level || "Phylum");
+                            if (!res.success) {
+                                return { success: false, error: res.error || "Failed to generate Taxonomy plot.", requested: "taxonomy" };
+                            }
+                            return { success: true, requested: "taxonomy", plotly_spec: res.data || null };
+                        } catch (e: any) {
+                            return { success: false, error: e.message || "Unknown error generating Taxonomy plot.", requested: "taxonomy" };
                         }
-                        return { success: true, requested: "beta", plotly_spec: res.data || null };
-                    } catch (e: any) {
-                        return { success: false, error: e.message || "Unknown error generating Beta Diversity plot.", requested: "beta" };
                     }
-                }
-            }),
-            visualizeTaxonomy: tool({
-                description: "Request a Taxonomy stacked barplot for the dataset. Shows the relative abundance of microbial taxa at a specific level.",
-                parameters: z.object({
-                    level: z.string().optional().describe("The taxonomic level to summarize by ('Phylum', 'Class', 'Order', 'Family', 'Genus', 'Species'). Defaults to 'Phylum'."),
                 }),
-                // @ts-ignore
-                execute: async ({ level }: { level?: string }) => {
-                    try {
-                        const res = await getTaxonomy(projectId, level || "Phylum");
-                        if (!res.success) {
-                            return { success: false, error: res.error || "Failed to generate Taxonomy plot.", requested: "taxonomy" };
+                visualizeRarefaction: tool({
+                    description: "Request a Rarefaction Curve for the dataset. Shows observed features as a function of sequencing depth to evaluate sampling sufficiency.",
+                    parameters: z.object({}),
+                    // @ts-ignore
+                    execute: async () => {
+                        try {
+                            const res = await getRarefaction(projectId);
+                            if (!res.success) {
+                                return { success: false, error: res.error || "Failed to generate Rarefaction plot.", requested: "rarefaction" };
+                            }
+                            return { success: true, requested: "rarefaction", plotly_spec: res.data || null };
+                        } catch (e: any) {
+                            return { success: false, error: e.message || "Unknown error generating Rarefaction curve.", requested: "rarefaction" };
                         }
-                        return { success: true, requested: "taxonomy", plotly_spec: res.data || null };
-                    } catch (e: any) {
-                        return { success: false, error: e.message || "Unknown error generating Taxonomy plot.", requested: "taxonomy" };
                     }
-                }
-            }),
-            visualizeRarefaction: tool({
-                description: "Request a Rarefaction Curve for the dataset. Shows observed features as a function of sequencing depth to evaluate sampling sufficiency.",
-                parameters: z.object({}),
-                // @ts-ignore
-                execute: async () => {
-                    try {
-                        const res = await getRarefaction(projectId);
-                        if (!res.success) {
-                            return { success: false, error: res.error || "Failed to generate Rarefaction plot.", requested: "rarefaction" };
-                        }
-                        return { success: true, requested: "rarefaction", plotly_spec: res.data || null };
-                    } catch (e: any) {
-                        return { success: false, error: e.message || "Unknown error generating Rarefaction curve.", requested: "rarefaction" };
-                    }
-                }
-            })
-        },
-        async onFinish({ response }) {
-            // Save chat to DB Session
-            try {
-                const session = await prisma.analysisSession.findFirst({
-                    where: { projectId },
-                    orderBy: { createdAt: "desc" },
-                });
-
-                if (session) {
-                    const previousMessages = JSON.parse(session.messages as string || "[]");
-
-                    const allMessagesMap = new Map();
-                    previousMessages.forEach((m: any) => allMessagesMap.set(m.id, m));
-                    messages.forEach((m: any) => {
-                        if (m.id) allMessagesMap.set(m.id, m);
-                    });
-                    response.messages.forEach((m: any) => {
-                        const mId = m.id || `ai-${Date.now()}-${Math.random()}`;
-                        allMessagesMap.set(mId, { ...m, id: mId });
+                })
+            },
+            async onFinish({ response }) {
+                // Save chat to DB Session
+                try {
+                    const session = await prisma.analysisSession.findFirst({
+                        where: { projectId },
+                        orderBy: { createdAt: "desc" },
                     });
 
-                    await prisma.analysisSession.update({
-                        where: { id: session.id },
-                        data: { messages: JSON.stringify(Array.from(allMessagesMap.values())) },
-                    });
-                } else {
-                    await prisma.analysisSession.create({
-                        data: {
-                            projectId,
-                            messages: JSON.stringify([...messages, ...response.messages]),
-                        },
-                    });
-                }
-            } catch (e) {
-                console.error("Error saving chat session", e);
-            }
-        },
-    });
+                    // Build a map of toolCallId -> result from role:'tool' messages in response
+                    // response.messages is ModelMessage[] — tool results live in role:'tool' entries
+                    const toolResultMap = new Map<string, any>();
+                    for (const rm of response.messages) {
+                        if (rm.role === 'tool' && Array.isArray(rm.content)) {
+                            for (const block of rm.content) {
+                                if (block.type === 'tool-result') {
+                                    toolResultMap.set(block.toolCallId, block.output);
+                                }
+                            }
+                        }
+                    }
 
-    // toUIMessageStreamResponse() is the correct method for AI SDK v6 + DefaultChatTransport
-    // It returns a Response with the UI message stream format that useChat expects
-    return result.toUIMessageStreamResponse();
-} catch (e: any) {
+                    // Helper: extract plain text from a UIMessage (AI SDK v6 stores it in parts, not content)
+                    const extractUserText = (m: any): string => {
+                        if (Array.isArray(m.parts)) {
+                            const t = m.parts.find((p: any) => p.type === 'text');
+                            if (t?.text) return t.text;
+                        }
+                        return typeof m.content === 'string' ? m.content : '';
+                    };
+
+                    // Helper: serialize an incoming request UIMessage for storage
+                    const serializeRequestMessage = (m: any) => {
+                        if (m.role === 'user') {
+                            const text = extractUserText(m);
+                            return {
+                                id: m.id,
+                                role: 'user' as const,
+                                content: text,
+                                parts: [{ type: 'text', text }],
+                            };
+                        }
+                        // assistant messages from the request are already-stored history — pass through
+                        return {
+                            id: m.id,
+                            role: m.role,
+                            content: typeof m.content === 'string' ? m.content : '',
+                            parts: m.parts || [],
+                            toolInvocations: m.toolInvocations || [],
+                        };
+                    };
+
+                    // Save only the NEW user message from this turn (the last user message in the request).
+                    // Historical messages are already stored correctly in the DB and will be preserved
+                    // by the allMessagesMap merge. Re-serializing them here would overwrite the correct
+                    // DB format (tool-{toolName} flat) with the client streaming format (tool-invocation).
+                    const lastUserMsg = [...messages].reverse().find((m: any) => m.role === 'user');
+                    const incomingMessages = lastUserMsg ? [serializeRequestMessage(lastUserMsg)] : [];
+
+                    // Build ONE merged assistant message from ALL assistant entries in response.messages.
+                    // streamText with tools produces multiple assistant messages per turn
+                    // (pre-tool with tool-call blocks, post-tool with final text), each with a different ID.
+                    // Saving them separately causes duplicates because the client (useChat) only knows
+                    // the LAST assistant message's ID. The earlier "ghost" messages accumulate each turn.
+                    const responseAssistants = response.messages.filter((m: any) => m.role === 'assistant');
+                    const lastAsst = responseAssistants[responseAssistants.length - 1];
+
+                    const responseMessages: any[] = [];
+                    if (lastAsst) {
+                        // Use the LAST assistant's ID — this is what useChat tracks on the client
+                        // Cast to any: ResponseMessage type doesn't expose 'id' statically but it exists at runtime
+                        const finalId = (lastAsst as any).id || `ai-${Date.now()}-${Math.random()}`;
+
+                        // Collect ALL content blocks from ALL assistant messages in the response
+                        const allContentBlocks: any[] = responseAssistants.flatMap((m: any) =>
+                            Array.isArray(m.content) ? m.content : []
+                        );
+
+                        // Use the LAST text block as the final response text
+                        const textBlocks = allContentBlocks.filter((b: any) => b.type === 'text');
+                        const textContent = textBlocks[textBlocks.length - 1]?.text || '';
+
+                        const toolInvocations: any[] = [];
+                        const parts: any[] = textContent ? [{ type: 'text', text: textContent }] : [];
+
+                        for (const block of allContentBlocks) {
+                            if (block.type === 'tool-call') {
+                                // Skip tools that were already called in PREVIOUS turns.
+                                // The model (Gemini Lite) sometimes re-calls old tools despite instructions.
+                                // Filtering here ensures each response message only contains NEW tool calls.
+                                if (resolvedToolNames.has(block.toolName)) continue;
+
+                                const result = toolResultMap.get(block.toolCallId);
+                                toolInvocations.push({
+                                    state: 'result',
+                                    toolCallId: block.toolCallId,
+                                    toolName: block.toolName,
+                                    args: block.args ?? block.input,
+                                    result: result ?? { success: false, error: 'Resultado não disponível.' },
+                                });
+                                parts.push({
+                                    type: `tool-${block.toolName}`,
+                                    toolCallId: block.toolCallId,
+                                    toolName: block.toolName,
+                                    args: block.args ?? block.input,
+                                    state: 'result',
+                                    result: result ?? { success: false, error: 'Resultado não disponível.' },
+                                });
+                            }
+                        }
+
+                        responseMessages.push({ id: finalId, role: 'assistant', content: textContent, parts, toolInvocations });
+                    }
+
+                    const currentTurnMessages = [...incomingMessages, ...responseMessages];
+
+                    if (session) {
+                        const previousMessages = JSON.parse(session.messages as string || "[]");
+                        const allMessagesMap = new Map();
+                        previousMessages.forEach((m: any) => allMessagesMap.set(m.id, m));
+                        currentTurnMessages.forEach((m: any) => allMessagesMap.set(m.id, m));
+                        await prisma.analysisSession.update({
+                            where: { id: session.id },
+                            data: { messages: JSON.stringify(Array.from(allMessagesMap.values())) },
+                        });
+                    } else {
+                        await prisma.analysisSession.create({
+                            data: { projectId, messages: JSON.stringify(currentTurnMessages) },
+                        });
+                    }
+                } catch (e) {
+                    console.error("Error saving chat session", e);
+                }
+            },
+        });
+
+        // toUIMessageStreamResponse() is the correct method for AI SDK v6 + DefaultChatTransport
+        // It returns a Response with the UI message stream format that useChat expects
+        return result.toUIMessageStreamResponse();
+    } catch (e: any) {
         console.error("FATAL ERROR IN AI CHAT STREAM:", e);
         return new Response(e.message || "Failed to create stream", { status: 500 });
     }
