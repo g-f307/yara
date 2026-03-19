@@ -64,6 +64,58 @@ export async function createProject(name: string, description?: string) {
     }
 }
 
+export async function deleteProject(projectId: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+        if (!user) throw new Error("User not found");
+
+        // Verify ownership before deleting
+        const project = await prisma.project.findFirst({
+            where: { id: projectId, userId: user.id },
+        });
+        if (!project) throw new Error("Project not found or access denied");
+
+        await prisma.project.delete({ where: { id: projectId } });
+
+        revalidatePath("/dashboard");
+        return { success: true };
+    } catch (error: any) {
+        console.error("Failed to delete project:", error);
+        return { success: false, error: error.message || "Failed to delete project" };
+    }
+}
+
+export async function renameProject(projectId: string, newName: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
+        if (!user) throw new Error("User not found");
+
+        // Verify ownership before updating
+        const project = await prisma.project.findFirst({
+            where: { id: projectId, userId: user.id },
+        });
+        if (!project) throw new Error("Project not found or access denied");
+
+        const updated = await prisma.project.update({
+            where: { id: projectId },
+            data: { name: newName.trim() },
+        });
+
+        revalidatePath("/dashboard");
+        revalidatePath(`/project/${projectId}`);
+        return { success: true, project: updated };
+    } catch (error: any) {
+        console.error("Failed to rename project:", error);
+        return { success: false, error: error.message || "Failed to rename project" };
+    }
+}
+
 export async function createProjectFile(projectId: string, fileData: { name: string, type: string, url: string, key: string, size: number }) {
     try {
         const { userId } = await auth();
