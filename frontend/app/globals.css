@@ -19,7 +19,7 @@
   --accent: #EDE9FE;
   --accent-foreground: #1a1a2e;
   --destructive: #ef4444;
-  --destructive-foreground: #ef4444;
+  --destructive-foreground: #f8fafc;
   --border: #e4e4e7;
   --input: #e4e4e7;
   --ring: #7C3AED;
@@ -145,5 +145,21 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Set sidebar offset variable so Dialog portal can center on content area */
+  body.has-sidebar {
+    --dialog-sidebar-offset: 130px; /* half of 260px sidebar width */
+  }
+
+  /* Force responsive breakpoints bypassing Tailwind compiler cache */
+  @media (max-width: 1023px) {
+    .mobile-only { display: flex !important; }
+    .mobile-only-block { display: block !important; }
+    .desktop-only { display: none !important; }
+  }
+  @media (min-width: 1024px) {
+    .mobile-only { display: none !important; }
+    .mobile-only-block { display: none !important; }
+    .desktop-only { display: flex !important; }
   }
 }
