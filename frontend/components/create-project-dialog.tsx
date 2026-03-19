@@ -52,31 +52,31 @@ export function CreateProjectDialog({ children }: { children: React.ReactNode })
             <DialogContent className="sm:max-w-[425px]">
                 <form onSubmit={onSubmit}>
                     <DialogHeader>
-                        <DialogTitle>Create new project</DialogTitle>
+                        <DialogTitle>Criar novo projeto</DialogTitle>
                         <DialogDescription>
-                            Give your metagenomic analysis project a name to get started.
+                            Dê um nome para o seu projeto de análise metagenômica para começar.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="flex flex-col gap-3">
                             <Label htmlFor="name">
-                                Project Name
+                                Nome do projeto
                             </Label>
                             <Input
                                 id="name"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                placeholder="e.g. Amazon Soil Microbiome"
+                                placeholder="ex.: Microbioma do Solo Amazônico"
                                 autoFocus
                             />
                         </div>
                     </div>
                     <DialogFooter>
                         <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                            Cancel
+                            Cancelar
                         </Button>
                         <Button type="submit" disabled={!name.trim() || isLoading}>
-                            {isLoading ? "Creating..." : "Create Project"}
+                            {isLoading ? "Criando..." : "Criar Projeto"}
                         </Button>
                     </DialogFooter>
                 </form>
