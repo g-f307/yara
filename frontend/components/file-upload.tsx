@@ -9,7 +9,8 @@ interface FileUploadProps {
 }
 
 import { UploadDropzone } from "@/lib/uploadthing";
-import { createProjectFile } from "@/lib/actions";
+import { createProjectFile, validateProjectData } from "@/lib/actions";
+import { toast } from "sonner";
 
 export function FileUpload({ compact = false, projectId, onFileSelect }: FileUploadProps) {
   return (
@@ -36,6 +37,21 @@ export function FileUpload({ compact = false, projectId, onFileSelect }: FileUpl
                     console.error("Server action error:", result.error);
                     alert(`Falha ao salvar no banco: ${result.error}`);
                   }
+                }
+
+                const validation = await validateProjectData(projectId);
+                if (validation.success) {
+                  const detected = validation.data?.detected_types ?? [];
+                  const warnings = validation.data?.warnings ?? [];
+                  if (detected.length > 0) {
+                    toast.success(`Dados prontos para: ${detected.join(", ")}`);
+                  } else if (warnings.length > 0) {
+                    toast.warning(warnings[0]);
+                  } else {
+                    toast.info("Upload concluido. Peça uma análise ao YARA para continuar.");
+                  }
+                } else {
+                  toast.error(validation.error || "Não foi possível validar os arquivos enviados.");
                 }
               }
               if (onFileSelect) {

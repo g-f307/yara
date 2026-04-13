@@ -16,6 +16,7 @@ import {
 
 import { Suspense } from "react"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
+import { getFriendlyError } from "@/lib/error-messages"
 
 import { useResultsStore } from "@/store/use-results-store"
 
@@ -229,10 +230,17 @@ function MessageBubble({ message, allowedToolNames }: { message: any; allowedToo
                           <span className="text-xs">Processando dados...</span>
                         </div>
                       ) : result?.error ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center text-destructive gap-2 p-4 text-center">
-                          <span className="text-sm font-medium">A análise falhou</span>
-                          <span className="text-xs text-muted-foreground">{result.error}</span>
-                        </div>
+                        (() => {
+                          const friendly = getFriendlyError(result.error);
+                          return (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-destructive gap-2 p-4 text-center">
+                              <span className="text-sm font-medium">{friendly.message}</span>
+                              {friendly.hint && (
+                                <span className="text-xs text-muted-foreground">{friendly.hint}</span>
+                              )}
+                            </div>
+                          )
+                        })()
                       ) : (
                         <Suspense fallback={<div className="flex w-full h-full items-center justify-center"><div className="size-6 rounded-full border-b-2 border-primary animate-spin" /></div>}>
                           {(result.plotly_spec?.data || result.data?.data) ? (

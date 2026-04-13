@@ -16,6 +16,8 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Button } from "@/components/ui/button"
 import { Menu, BarChart2 } from "lucide-react"
 import { YaraLogo } from "@/components/yara-logo"
+import { activateDemoMode } from "@/lib/actions"
+import { toast } from "sonner"
 
 interface ProjectLayoutClientProps {
     projectId: string;
@@ -33,6 +35,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
         if (currentProject && currentProject.fileCount > 0) return true;
         return false;
     });
+    const [activatingDemo, setActivatingDemo] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [resultsOpen, setResultsOpen] = useState(false);
 
@@ -162,10 +165,29 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                                         <div className="text-sm text-muted-foreground flex items-center gap-2">
                                             <span>ou apenas</span>
                                             <button
-                                                onClick={() => setHasData(true)}
+                                                disabled={activatingDemo}
+                                                onClick={async () => {
+                                                    setActivatingDemo(true);
+                                                    try {
+                                                        const result = await activateDemoMode(projectId);
+                                                        if (!result.success) throw new Error(result.error || "Falha ao ativar demonstração");
+
+                                                        const detected = result.data?.detected_types ?? [];
+                                                        toast.success(
+                                                            detected.length > 0
+                                                                ? `Demonstração pronta para: ${detected.join(", ")}`
+                                                                : "Demonstração pronta."
+                                                        );
+                                                        setHasData(true);
+                                                    } catch (error: any) {
+                                                        toast.error(error.message || "Não foi possível ativar os dados de demonstração.");
+                                                    } finally {
+                                                        setActivatingDemo(false);
+                                                    }
+                                                }}
                                                 className="text-primary hover:underline font-medium"
                                             >
-                                                testar com dados de demonstração
+                                                {activatingDemo ? "preparando demonstração..." : "testar com dados de demonstração"}
                                             </button>
                                         </div>
                                     </div>

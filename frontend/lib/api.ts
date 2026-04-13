@@ -150,3 +150,17 @@ export async function syncProjectFiles(project_id: string, files: { name: string
         body: JSON.stringify({ project_id, files }),
     });
 }
+
+export async function validateProjectData(projectId: string) {
+    return request("/api/parse/validate", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId }),
+    });
+}
+
+export async function useDemoData(projectId: string) {
+    return request("/api/project/use-demo", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, files: [] }),
+    });
+}

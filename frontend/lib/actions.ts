@@ -145,7 +145,7 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 
 // Analytics actions
 
-import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles, compareStatistics } from "./api";
+import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles, compareStatistics, validateProjectData as apiValidateProjectData, useDemoData } from "./api";
 
 async function ensureBackendSynched(projectId: string) {
     const pythonCoreUrl = process.env.PYTHON_CORE_URL || "http://localhost:8000";
@@ -173,6 +173,46 @@ async function ensureBackendSynched(projectId: string) {
             type: f.type,
             url: f.url
         })));
+    }
+}
+
+export async function validateProjectData(projectId: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        await ensureBackendSynched(projectId);
+
+        const result: any = await apiValidateProjectData(projectId);
+        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
+
+        return { success: true, data: result.data };
+    } catch (e: any) {
+        console.error(e);
+        return { success: false, error: e.message };
+    }
+}
+
+export async function activateDemoMode(projectId: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        const project = await prisma.project.findFirst({
+            where: {
+                id: projectId,
+                user: { clerkId: userId },
+            },
+        });
+        if (!project) throw new Error("Project not found or access denied");
+
+        await useDemoData(projectId);
+        const validation: any = await apiValidateProjectData(projectId);
+
+        return { success: true, data: validation.data };
+    } catch (e: any) {
+        console.error(e);
+        return { success: false, error: e.message };
     }
 }
 
