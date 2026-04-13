@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 
 export async function getUserProjects() {
     try {
@@ -37,16 +37,22 @@ export async function createProject(name: string, description?: string) {
         const { userId } = await auth();
         if (!userId) throw new Error("Unauthorized");
 
-        // Ensure user exists (in real app, this should be a Clerk webhook)
-        const dbUser = await prisma.user.upsert({
-            where: { clerkId: userId },
-            update: {},
-            create: {
-                clerkId: userId,
-                email: "user@example.com", // Temporary fallback
-                name: "Yara User",
+        let dbUser = await prisma.user.findUnique({ where: { clerkId: userId } });
+        if (!dbUser) {
+            const clerkUser = await currentUser();
+            const email = clerkUser?.emailAddresses[0]?.emailAddress;
+            if (!email) {
+                throw new Error("User not found. Please sign in again.");
             }
-        });
+
+            dbUser = await prisma.user.create({
+                data: {
+                    clerkId: userId,
+                    email,
+                    name: clerkUser?.fullName || "Usuario YARA",
+                }
+            });
+        }
 
         const project = await prisma.project.create({
             data: {
@@ -129,7 +135,7 @@ export async function createProjectFile(projectId: string, fileData: { name: str
         });
 
         // Revalidate project page to show new files in sidebar
-        revalidatePath(`/project/[id]`);
+        revalidatePath(`/project/${projectId}`);
         return { success: true, file };
     } catch (error: any) {
         console.error("Failed to save project file:", error);
@@ -139,7 +145,7 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 
 // Analytics actions
 
-import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles } from "./api";
+import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles, compareStatistics } from "./api";
 
 async function ensureBackendSynched(projectId: string) {
     const pythonCoreUrl = process.env.PYTHON_CORE_URL || "http://localhost:8000";
@@ -249,6 +255,30 @@ export async function getRarefaction(projectId: string) {
         await ensureBackendSynched(projectId);
 
         const result: any = await analyzeRarefaction(projectId);
+        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
+
+        return { success: true, data: result.plotly_spec };
+    } catch (e: any) {
+        console.error(e);
+        return { success: false, error: e.message };
+    }
+}
+
+export async function getStatistics(
+    projectId: string,
+    groupCol?: string,
+    metricCol?: string,
+    test: "kruskal" | "mann_whitney" = "kruskal",
+    group1?: string,
+    group2?: string
+) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        await ensureBackendSynched(projectId);
+
+        const result: any = await compareStatistics(projectId, groupCol, metricCol, test, group1, group2);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: result.plotly_spec };
