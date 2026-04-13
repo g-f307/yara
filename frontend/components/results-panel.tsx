@@ -33,6 +33,7 @@ function ResultsTab({ projectId }: { projectId: string }) {
   const betaPlotData = useResultsStore((state: any) => state.beta);
   const taxonomyPlotData = useResultsStore((state: any) => state.taxonomy);
   const rarefactionPlotData = useResultsStore((state: any) => state.rarefaction);
+  const statisticsPlotData = useResultsStore((state: any) => state.statistics);
 
   const handleAddToReport = async (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction', plotData: any, title: string) => {
     if (!plotData) return;
@@ -52,7 +53,6 @@ function ResultsTab({ projectId }: { projectId: string }) {
         id: `${type}-${Date.now()}`,
         type: 'plot',
         title,
-        contentData: plotData,
         base64Image: b64,
       });
       
@@ -223,6 +223,40 @@ function ResultsTab({ projectId }: { projectId: string }) {
           </Button>
         </div>
       </div>
+
+      {/* Statistics card */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="size-2 rounded-full bg-primary" />
+          <span className="text-sm font-medium text-card-foreground">
+            Statistical Comparison
+          </span>
+        </div>
+        <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
+          {statisticsPlotData ? (
+            <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
+              <div className="min-w-[500px] min-h-[400px] w-full h-full">
+                <PlotlyPlot divId="plot-statistics" data={(statisticsPlotData as any).data} layout={(statisticsPlotData as any).layout} />
+              </div>
+            </Suspense>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="size-8 text-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">
+                Ask YARA to compare groups statistically
+              </span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+            <Download className="size-3.5" /> Download Data
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground" onClick={() => handleAddToReport('statistics' as any, statisticsPlotData, 'Statistical Comparison')}>
+            <Plus className="size-3.5" /> Add to Report
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -319,8 +353,7 @@ function ReportTab({ projectId }: { projectId: string }) {
         toast.success(`${format.toUpperCase()} gerado com sucesso!`, { id: toastId });
         
         // Auto-download the file by creating a temporary anchor tag
-        const baseUrl = process.env.NEXT_PUBLIC_PYTHON_CORE_URL || "http://localhost:8000";
-        const fileUrl = `${baseUrl}${result.downloadUrl}`;
+        const fileUrl = `/api/core${result.downloadUrl}`;
         
         const a = document.createElement("a");
         a.href = fileUrl;

@@ -13,10 +13,11 @@ interface ResultsState {
   beta: any | null;
   taxonomy: any | null;
   rarefaction: any | null;
+  statistics: any | null;
   activeTab: string;
   reportItems: ReportItem[];
   
-  setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction', data: any) => void;
+  setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => void;
   setActiveTab: (tabId: string) => void;
   
   addReportItem: (item: ReportItem) => void;
@@ -32,10 +33,11 @@ export const useResultsStore = create<ResultsState>((set) => ({
   beta: null,
   taxonomy: null,
   rarefaction: null,
+  statistics: null,
   activeTab: 'files',
   reportItems: [],
   
-  setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction', data: any) => set((state: ResultsState) => ({ 
+  setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => set((state: ResultsState) => ({
     ...state, 
     [type]: data,
     activeTab: type // Auto-switch to the newly generated plot tab
@@ -49,5 +51,5 @@ export const useResultsStore = create<ResultsState>((set) => ({
   })),
   clearReport: () => set({ reportItems: [] }),
   
-  reset: () => set({ alpha: null, beta: null, taxonomy: null, rarefaction: null, activeTab: 'files', reportItems: [] })
+  reset: () => set({ alpha: null, beta: null, taxonomy: null, rarefaction: null, statistics: null, activeTab: 'files', reportItems: [] })
 }));

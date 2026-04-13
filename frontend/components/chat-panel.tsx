@@ -19,15 +19,52 @@ import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
 import { useResultsStore } from "@/store/use-results-store"
 
-function MessageBubble({ message, previousToolNames = new Set() }: { message: any; previousToolNames?: Set<string> }) {
+function getTextFromMessage(message: any): string {
+  if (typeof message?.content === "string" && message.content) return message.content;
+  if (Array.isArray(message?.parts)) {
+    return message.parts
+      .filter((part: any) => part.type === "text")
+      .map((part: any) => part.text ?? "")
+      .join("");
+  }
+  return "";
+}
+
+function getRequestedToolNames(text: string): Set<string> {
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const requested = new Set<string>();
+
+  if (/\b(alpha|alfa|shannon|simpson|chao1|faith|pielou|diversidade alfa)\b/.test(normalized)) {
+    requested.add("visualizeAlphaDiversity");
+  }
+  if (/\b(beta|pcoa|bray|jaccard|ordinacao|ordenacao|distancia|distancias)\b/.test(normalized)) {
+    requested.add("visualizeBetaDiversity");
+  }
+  if (/\b(taxonomia|taxonomica|taxonomico|taxon|taxa|barplot|composicao)\b/.test(normalized)) {
+    requested.add("visualizeTaxonomy");
+  }
+  if (/\b(rarefacao|rarefaction|rarefa[cç]ao|curva de rarefacao|profundidade)\b/.test(normalized)) {
+    requested.add("visualizeRarefaction");
+  }
+  if (/\b(estatistica|estatistico|kruskal|mann|whitney|p-value|p valor|significancia|compare|comparar|comparacao|grupos)\b/.test(normalized)) {
+    requested.add("visualizeStatistics");
+  }
+  if (/\b(parse|parsear|validar|valide|carregar|processar arquivo)\b/.test(normalized)) {
+    requested.add("parseData");
+  }
+
+  return requested;
+}
+
+function MessageBubble({ message, allowedToolNames }: { message: any; allowedToolNames?: Set<string> }) {
   const isUser = message.role === "user"
 
   // Unified data access for historical (DB) and active stream messages
-  const textContent = typeof message.content === "string"
-    ? message.content
-    : Array.isArray(message.parts)
-      ? message.parts.filter((p: any) => p.type === "text").map((p: any) => p.text).join("")
-      : "";
+  const textContent = getTextFromMessage(message);
 
   // Merge toolInvocations (from history DB format) and parts (from stream format)
   const toolInvocations = message.toolInvocations || [];
@@ -68,9 +105,8 @@ function MessageBubble({ message, previousToolNames = new Set() }: { message: an
       allToolsMap.set(t.toolCallId, t); // Prefer populated result
     }
   });
-  // Only render tools that are NEW in this message (not shown in a previous bubble)
   const mergedTools = Array.from(allToolsMap.values()).filter(
-    (t: any) => !previousToolNames.has(t.toolName)
+    (tool: any) => !allowedToolNames || allowedToolNames.size === 0 || allowedToolNames.has(tool.toolName)
   );
 
   const setPlotData = useResultsStore((state: any) => state.setPlotData);
@@ -107,6 +143,8 @@ function MessageBubble({ message, previousToolNames = new Set() }: { message: an
             setPlotData('taxonomy', spec);
           } else if (tool.toolName === "visualizeRarefaction") {
             setPlotData('rarefaction', spec);
+          } else if (tool.toolName === "visualizeStatistics") {
+            setPlotData('statistics', spec);
           }
         }
       });
@@ -168,7 +206,7 @@ function MessageBubble({ message, previousToolNames = new Set() }: { message: an
 
               const toolName = toolPart.toolName
 
-              if (["visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction"].includes(toolName)) {
+              if (["visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction", "visualizeStatistics"].includes(toolName)) {
                 return (
                   <div key={i} className="rounded border border-border bg-background p-3 w-full shadow-sm max-w-[600px]">
                     <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-2">
@@ -179,7 +217,9 @@ function MessageBubble({ message, previousToolNames = new Set() }: { message: an
                           ? "Beta Diversity Analysis"
                           : toolName === "visualizeTaxonomy"
                             ? "Taxonomic Composition"
-                            : "Rarefaction Curve"
+                            : toolName === "visualizeRarefaction"
+                              ? "Rarefaction Curve"
+                              : "Statistics Analysis"
                       }
                     </div>
                     <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
@@ -341,17 +381,20 @@ export function ChatPanel({
             </div>
           )}
           {(() => {
-            const seenToolNames = new Set<string>();
+            let lastUserText = "";
             return messages.map((message: any) => {
-              const prev = new Set(seenToolNames);
-              // Collect tool names from this message to exclude from future bubbles
-              const tools: any[] = message.toolInvocations || [];
-              (message.parts || []).forEach((p: any) => {
-                if (p.type === 'tool-invocation' && p.toolInvocation?.toolName) tools.push(p.toolInvocation);
-                if (p.toolName && p.type?.startsWith('tool-')) tools.push(p);
-              });
-              tools.forEach((t: any) => { if (t.toolName) seenToolNames.add(t.toolName); });
-              return <MessageBubble key={message.id} message={message} previousToolNames={prev} />;
+              if (message.role === "user") {
+                lastUserText = getTextFromMessage(message);
+                return <MessageBubble key={message.id} message={message} />;
+              }
+
+              return (
+                <MessageBubble
+                  key={message.id}
+                  message={message}
+                  allowedToolNames={getRequestedToolNames(lastUserText)}
+                />
+              );
             });
           })()}
 

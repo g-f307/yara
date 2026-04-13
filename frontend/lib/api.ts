@@ -110,8 +110,8 @@ export async function analyzeRarefaction(
 
 export async function compareStatistics(
     projectId: string,
-    groupCol: string,
-    metricCol: string,
+    groupCol?: string,
+    metricCol?: string,
     test: "kruskal" | "mann_whitney" = "kruskal",
     group1?: string,
     group2?: string
