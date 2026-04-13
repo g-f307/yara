@@ -1,4 +1,23 @@
 services:
+  # ── PostgreSQL ───────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: yara-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: yara
+      POSTGRES_PASSWORD: yara_password
+      POSTGRES_DB: yara_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yara -d yara_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   # ── Backend FastAPI ──────────────────────────────
   backend:
     build: ./backend
@@ -11,6 +30,10 @@ services:
       - ./backend/uploads:/app/uploads
     environment:
       - STORAGE_PATH=/app/uploads
+      - DATABASE_URL=postgresql://yara:yara_password@yara-postgres:5432/yara_db
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
   # ── Frontend Next.js ─────────────────────────────
@@ -31,3 +54,6 @@ services:
     depends_on:
       - backend
     restart: unless-stopped
+
+volumes:
+  postgres_data:
