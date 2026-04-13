@@ -53,14 +53,25 @@ class QIIME2Parser:
         if not qzv_path.exists():
             raise FileNotFoundError(f"Arquivo não encontrado: {qzv_path}")
         
-        # Criar diretório temporário
         self.temp_dir = tempfile.mkdtemp(prefix="qiime2_")
+        extract_path = Path(self.temp_dir).resolve()
         
-        # Extrair
         with zipfile.ZipFile(qzv_path, 'r') as zip_ref:
-            zip_ref.extractall(self.temp_dir)
+            for member in zip_ref.infolist():
+                member_path = (extract_path / member.filename).resolve()
+                try:
+                    member_path.relative_to(extract_path)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"Zip slip detectado: '{member.filename}' aponta para fora do diretório seguro."
+                    ) from exc
+
+                if member.file_size > 500 * 1024 * 1024:
+                    raise ValueError(f"Arquivo interno muito grande: {member.filename}")
+
+                zip_ref.extract(member, extract_path)
         
-        return Path(self.temp_dir)
+        return extract_path
     
     def find_data_files(self, extract_path: Path, pattern: str = "*.tsv") -> List[Path]:
         """
