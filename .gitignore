@@ -48,3 +48,7 @@ python_core/venv/
 python_core/.venv/
 python-core/venv/
 python-core/.venv/
+
+.codex
+YARA_*
+yara_*

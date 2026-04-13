@@ -1,162 +1,225 @@
-# 🧬 YARA - Your Assistant for Results Analysis
+# YARA
 
-**Inteligência Artificial para geração automática de relatórios bioinformáticos na Amazônia**
+YARA, sigla de Your Assistant for Results Analysis, é uma aplicação web para apoio à análise de resultados metagenômicos de sequências 16S rRNA gerados a partir do QIIME 2. O projeto combina uma interface conversacional em português brasileiro com serviços de análise científica em Python, permitindo que pesquisadores façam upload de arquivos, organizem projetos e solicitem visualizações ou relatórios sem precisar programar.
 
-![Python](https://img.shields.io/badge/Python-3.10-blue)
-![Rasa](https://img.shields.io/badge/Rasa-3.6-purple)
-![Status](https://img.shields.io/badge/Status-Em%20Desenvolvimento-yellow)
+O público-alvo são pesquisadores de bioinformática e áreas correlatas, especialmente em contextos institucionais como IFAM, EMBRAPA, INPA e laboratórios parceiros.
 
----
+## Estado Atual
 
-## 📋 Sobre
+O repositório está em fase de integração do produto web. A antiga base Rasa foi removida, e a arquitetura atual está organizada em dois serviços principais:
 
-YARA é um agente conversacional inteligente desenvolvido para interpretar resultados de análises metagenômicas geradas pelo QIIME 2, criado especificamente para pesquisadores da região amazônica.
+- Frontend em Next.js, com dashboard, autenticação, upload de arquivos, páginas de projeto, chat e painel de resultados.
+- Backend em FastAPI, com endpoints científicos para parse, diversidade alfa, diversidade beta, taxonomia, rarefação, estatística e relatórios.
+- Persistência com Prisma e PostgreSQL, usando modelos para usuários, projetos, arquivos e sessões de análise.
+- Upload com Uploadthing, protegido por autenticação Clerk.
+- Chat via Vercel AI SDK, com ferramentas que chamam o backend científico e retornam especificações Plotly para renderização no frontend.
+- Geração inicial de relatórios PDF e DOCX no backend.
 
-### 🎯 Objetivos
+Algumas integrações ainda estão em evolução, especialmente a configuração definitiva do provedor de LLM, o fluxo de provisionamento do banco no Docker Compose e o endurecimento de segurança/validação de arquivos QIIME 2.
 
-- ✅ Interpretar automaticamente resultados do QIIME 2
-- ✅ Gerar relatórios em linguagem natural
-- ✅ Promover autonomia científica regional
-- ✅ Democratizar acesso à bioinformática
+## Arquitetura
 
-### 🏛️ Instituições
-
-- Instituto Federal do Amazonas (IFAM)
-- EMBRAPA Amazônia Ocidental
-- Instituto Nacional de Pesquisas da Amazônia (INPA)
-
----
-
-## 🚀 Início Rápido
-
-### Pré-requisitos
-
-- Python 3.10+
-- Conda instalado
-- Fedora Linux (recomendado)
-
-### Instalação
-```bash
-# Clonar repositório
-git clone https://github.com/seu-usuario/yara.git
-cd yara
-
-# Criar ambiente
-conda create -n yara python=3.10 -y
-conda activate yara
-
-# Instalar dependências
-make install
-
-# Treinar modelo
-make train
-```
-
-### Uso
-```bash
-# Terminal 1: Actions Server
-make actions
-
-# Terminal 2: Chat
-make shell
-```
-
----
-
-## 💬 Funcionalidades
-
-O YARA atualmente responde sobre:
-
-- ✅ **Diversidade Alfa** (Shannon, Simpson, Observed Features)
-- ✅ **Diversidade Beta** (PCoA, UniFrac, Bray-Curtis)
-- ✅ **Taxonomia** (Classificação hierárquica)
-- ✅ **Rarefação** (Curvas de amostragem e saturação)
-- ✅ **Análises estatísticas** (Kruskal-Wallis e Mann-Whitney)
-
----
-
-## 📁 Estrutura
-```
+```text
 yara/
-├── domain.yml          # Intents, entities, responses
-├── config.yml          # Pipeline NLU e políticas
-├── data/
-│   ├── nlu.yml        # Exemplos de treinamento
-│   ├── stories.yml    # Fluxos de conversação
-│   └── rules.yml      # Regras fixas
-├── actions/
-│   └── actions.py     # Lógica customizada
-├── models/            # Modelos treinados
-├── Makefile           # Comandos úteis
-└── README.md          # Este arquivo
+├── frontend/                  Next.js, TypeScript, Tailwind, shadcn/ui
+│   ├── app/                   Rotas da aplicação e API routes
+│   ├── components/            Componentes de UI, chat, upload e resultados
+│   ├── lib/                   Cliente Prisma, ações server-side e cliente do backend
+│   ├── prisma/                Schema Prisma
+│   └── package.json
+│
+├── backend/                   FastAPI e módulos científicos
+│   ├── main.py                Aplicação FastAPI e registro dos routers
+│   ├── routers/               Endpoints REST
+│   ├── analysis/              Implementações de análise metagenômica
+│   ├── utils/                 Utilitários de sincronização de projetos
+│   ├── data/mock/             Dados de exemplo para desenvolvimento
+│   └── requirements.txt
+│
+├── docker-compose.yml         Orquestração local do frontend e backend
+├── AGENTS.md                  Contexto técnico e regras de evolução do projeto
+└── README.md
 ```
 
----
+## Stack
 
-## 🛠️ Desenvolvimento
+Frontend:
 
-### Adicionar Nova Funcionalidade
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS
+- shadcn/ui e Radix UI
+- Clerk
+- Uploadthing
+- Vercel AI SDK
+- Plotly.js
+- Zustand
 
-1. **Adicionar exemplos** em `data/nlu.yml`
-2. **Criar action** em `actions/actions.py`
-3. **Registrar** em `domain.yml`
-4. **Treinar**: `make train`
-5. **Testar**: `make shell`
+Backend:
 
-### Comandos Úteis
+- Python 3.11
+- FastAPI
+- pandas, NumPy, SciPy e scikit-learn
+- scikit-bio
+- Plotly
+- ReportLab
+- python-docx
+
+Banco de dados:
+
+- PostgreSQL
+- Prisma ORM
+
+## Funcionalidades Implementadas
+
+- Autenticação com Clerk nas páginas de dashboard e projeto.
+- Criação, listagem, renomeação e exclusão de projetos.
+- Upload de arquivos via Uploadthing.
+- Registro de arquivos por projeto no banco via Prisma.
+- Chat em português brasileiro com ferramentas de análise.
+- Sincronização de arquivos enviados para o backend Python.
+- Visualizações Plotly para diversidade alfa, diversidade beta, taxonomia e rarefação.
+- Endpoints REST para estatísticas e relatórios.
+- Persistência de sessões de análise no banco.
+- Modo claro/escuro no frontend.
+
+## Endpoints do Backend
+
+O backend FastAPI expõe os seguintes endpoints:
+
+```text
+GET  /health
+
+POST /api/parse
+POST /api/project/sync
+GET  /api/project/status/{project_id}
+
+POST /api/alpha/analyze
+POST /api/beta/pcoa
+POST /api/beta/distances
+POST /api/taxonomy/summary
+POST /api/taxonomy/barplot
+POST /api/rarefaction/analyze
+POST /api/statistics/compare
+
+POST /api/reports/pdf
+POST /api/reports/docx
+GET  /api/reports/download/{filename}
+```
+
+Por convenção do projeto, os endpoints analíticos devem retornar JSON com `data` e `plotly_spec` quando aplicável.
+
+## Variáveis de Ambiente
+
+Crie os arquivos de ambiente localmente. Não versionar chaves, URLs privadas ou segredos.
+
+`frontend/.env.local`:
+
+```env
+DATABASE_URL=
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+UPLOADTHING_SECRET=
+UPLOADTHING_APP_ID=
+PYTHON_CORE_URL=http://localhost:8000
+NEXT_PUBLIC_PYTHON_CORE_URL=http://localhost:8000
+```
+
+O chat usa o provedor configurado no código do Vercel AI SDK. No estado atual do repositório, a rota `frontend/app/api/chat/route.ts` usa `@ai-sdk/google`, então também é necessário configurar a variável de API correspondente ao provedor usado no ambiente de execução.
+
+`backend/.env`:
+
+```env
+DATABASE_URL=
+STORAGE_PATH=./uploads
+```
+
+## Execução Local
+
+### Opção 1: Docker Compose
+
 ```bash
-make help      # Ver todos comandos
-make train     # Treinar modelo
-make shell     # Chat teste
-make actions   # Servidor actions
-make test      # Rodar testes
-make clean     # Limpar cache
+docker compose up --build
 ```
 
----
+Serviços esperados:
 
-## 📊 Cronograma
+- Frontend: `http://localhost:3001`
+- Backend: `http://localhost:8000`
+- Documentação FastAPI: `http://localhost:8000/docs`
 
-**Ago-Out/2025**: Desenvolvimento core
-**Nov/2025-Jan/2026**: Integração QIIME 2
-**Fev-Ago/2026**: Validação e refinamento
+Observação: o `docker-compose.yml` atual sobe frontend e backend. O `DATABASE_URL` configurado para o frontend aponta para PostgreSQL, mas o serviço de banco ainda precisa estar disponível separadamente ou ser adicionado ao Compose.
 
----
+### Opção 2: execução manual
 
-## 🤝 Contribuir
+Backend:
 
-1. Fork o projeto
-2. Crie uma branch (`git checkout -b feature/nova-feature`)
-3. Commit (`git commit -m 'Adiciona nova feature'`)
-4. Push (`git push origin feature/nova-feature`)
-5. Abra um Pull Request
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
 
----
+Frontend:
 
-## 📄 Licença
+```bash
+cd frontend
+npm install
+npx prisma generate
+npm run dev
+```
+
+O frontend será iniciado em `http://localhost:3001`.
+
+## Banco de Dados
+
+O schema Prisma define os seguintes modelos:
+
+- `User`: usuário associado ao `clerkId`.
+- `Project`: projeto de análise pertencente a um usuário.
+- `File`: arquivo enviado e associado a um projeto.
+- `AnalysisSession`: histórico de mensagens e análises por projeto.
+
+Após configurar `DATABASE_URL`, gere o cliente Prisma:
+
+```bash
+cd frontend
+npx prisma generate
+```
+
+Use migrações ou sincronização de schema conforme o fluxo adotado no ambiente de desenvolvimento.
+
+## Fluxo Principal
+
+1. O usuário autentica com Clerk.
+2. O usuário cria um projeto no dashboard.
+3. O usuário faz upload de arquivos pelo Uploadthing.
+4. O frontend registra os metadados dos arquivos no PostgreSQL via Prisma.
+5. Ao solicitar uma análise no chat, o frontend sincroniza os arquivos do projeto com o backend.
+6. O backend executa a análise científica e retorna dados estruturados e especificações Plotly.
+7. O frontend renderiza o gráfico no painel de resultados e mantém o histórico da sessão.
+
+## Áreas em Desenvolvimento
+
+- Finalizar a configuração definitiva do provedor LLM do produto.
+- Adicionar o PostgreSQL ao Docker Compose ou documentar um fluxo padrão com banco externo.
+- Reforçar a validação de conteúdo dos uploads, especialmente arquivos `.qzv` e `.qza`.
+- Consolidar testes automatizados para os endpoints científicos.
+- Completar o fluxo de relatórios com exportação estável de artefatos e URLs de download.
+- Refinar a criação de usuários a partir do Clerk, substituindo dados temporários por webhook ou sincronização robusta.
+
+## Diretrizes de Evolução
+
+- Não expor chaves de API no cliente.
+- Manter filtros por usuário em queries Prisma que acessam projetos, arquivos e sessões.
+- Preservar a lógica científica em `backend/analysis/`, alterando interfaces com cuidado.
+- Manter respostas do assistente conversacional em português brasileiro.
+- Retornar `data` e `plotly_spec` nos endpoints analíticos sempre que houver resultado visualizável.
+- Validar extensão e conteúdo dos arquivos antes de processá-los no backend.
+
+## Licença
 
 Este projeto está sob a licença MIT.
-
----
-
-## 👥 Equipe
-
-**Coordenador**: Prof. Diego Lisboa Rios (IFAM)
-**Email**: diego.rios@ifam.edu.br
-**Projeto**: PVM2264-2025
-
----
-
-## 🙏 Agradecimentos
-
-- IFAM - Campus Manaus Centro
-- EMBRAPA Amazônia Ocidental
-- INPA
-- Comunidade Rasa
-- Comunidade QIIME 2
-
----
-
-<p align="center">
-  <strong>Desenvolvido com ❤️ para a ciência amazônica 🌳</strong>
-</p>
