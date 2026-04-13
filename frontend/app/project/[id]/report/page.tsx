@@ -21,11 +21,9 @@ export default function ReportPage() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
-    getUserProjects().then((r: any) => {
-      if (r.projects) {
-        const found = r.projects.find((p: any) => p.id === projectId)
-        setProject(found ?? null)
-      }
+    getUserProjects().then((projects: any[]) => {
+      const found = projects.find((p: any) => p.id === projectId)
+      setProject(found ?? null)
     })
   }, [projectId])
 
@@ -36,7 +34,7 @@ export default function ReportPage() {
       const result: any = await buildReport(projectId, format, reportItems)
       if (!result.success) throw new Error(result.error || "Falha ao gerar relatório")
       if (result.downloadUrl) {
-        window.open(result.downloadUrl, "_blank")
+        window.open(`/api/core${result.downloadUrl}`, "_blank")
       }
     } catch (e: any) {
       setExportError(e.message)
