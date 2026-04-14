@@ -17,6 +17,7 @@ O repositório está em fase de integração do produto web. A antiga base Rasa 
 - Validação pós-upload para detectar quais análises estão disponíveis no projeto.
 - Modo demonstração com dados mock reais no backend.
 - Histórico analítico estruturado para alimentar contexto e relatórios.
+- Diagnóstico de qualidade de sequenciamento com QC de reads, detecção de outliers em diversidade alfa e recomendação de rarefação.
 
 ## Arquitetura
 
@@ -81,6 +82,9 @@ Banco de dados:
 - Chat em português brasileiro com ferramentas de análise.
 - Sincronização de arquivos enviados para o backend Python.
 - Visualizações Plotly para diversidade alfa, diversidade beta, taxonomia e rarefação.
+- Painel de QC com reads por amostra, detecção de baixa cobertura e fallback por rarefação quando não há arquivo específico de QC.
+- Detecção automática de outliers em diversidade alfa, com destaque no gráfico e aviso no painel de resultados.
+- Recomendação de profundidade de rarefação exibida junto ao gráfico.
 - Visualização conversacional de estatística não-paramétrica.
 - Endpoints REST para estatísticas, validação de dados, modo demo e relatórios.
 - Persistência de sessões de análise no banco.
@@ -101,6 +105,7 @@ POST /api/project/sync
 POST /api/project/use-demo
 GET  /api/project/status/{project_id}
 
+POST /api/qc/summary
 POST /api/alpha/analyze
 POST /api/beta/pcoa
 POST /api/beta/distances
@@ -213,16 +218,48 @@ Use migrações ou sincronização de schema conforme o fluxo adotado no ambient
 2. O usuário cria um projeto no dashboard.
 3. O usuário faz upload de arquivos pelo Uploadthing.
 4. O frontend registra os metadados dos arquivos no PostgreSQL via Prisma.
-5. Ao solicitar uma análise no chat, o frontend sincroniza os arquivos do projeto com o backend.
-6. O backend executa a análise científica e retorna dados estruturados e especificações Plotly.
-7. O frontend renderiza o gráfico no painel de resultados e mantém o histórico da sessão.
+5. Após o upload, o frontend valida os dados disponíveis e tenta gerar o QC automaticamente quando houver dados compatíveis.
+6. Ao solicitar uma análise no chat, o frontend sincroniza os arquivos do projeto com o backend.
+7. O backend executa a análise científica e retorna dados estruturados e especificações Plotly.
+8. O frontend renderiza o gráfico no painel de resultados, preserva estatísticas auxiliares e mantém o histórico da sessão.
+
+## Dados de Teste
+
+O projeto mantém dois conjuntos de mocks sincronizados:
+
+- `backend/data/mock`: usado pelo modo demonstração do backend.
+- `data/mock`: usado para upload manual pela interface.
+
+Arquivos disponíveis:
+
+- `alpha_mock.tsv`: diversidade alfa com uma amostra outlier (`Amostra10`) para testar alertas de alpha.
+- `beta_mock.tsv`: matriz de distância para PCoA.
+- `taxonomy_mock.tsv`: composição taxonômica para barplot.
+- `rarefaction_mock.tsv`: curvas de rarefação com baixa cobertura em profundidades altas para testar recomendação.
+- `qc_mock.tsv`: contagem de reads por amostra para testar o painel de QC.
+
+Fluxo sugerido para teste manual:
+
+```text
+1. Criar um projeto novo.
+2. Fazer upload dos arquivos em data/mock.
+3. Pedir ao chat: "avalie o QC dos reads".
+4. Pedir: "gere diversidade alfa".
+5. Pedir: "gere rarefação".
+```
+
+Resultados esperados:
+
+- QC deve destacar `Amostra10` como outlier de baixa cobertura.
+- Alpha deve destacar `Amostra10` como outlier em Shannon.
+- Rarefação deve mostrar a profundidade recomendada no card de resultados.
 
 ## Próximos Passos
 
 - Consolidar testes automatizados para os endpoints científicos.
-- Evoluir a validação científica de qualidade dos arquivos enviados.
 - Refinar os templates de relatório para submissão científica.
 - Ampliar o contexto analítico persistente usado pelo assistente.
+- Implementar geração de seção de Métodos e interpretação guiada pós-análise.
 
 ## Diretrizes de Evolução
 
