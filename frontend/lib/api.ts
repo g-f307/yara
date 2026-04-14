@@ -108,6 +108,13 @@ export async function analyzeRarefaction(
     });
 }
 
+export async function qcSummary(projectId: string) {
+    return request("/api/qc/summary", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId }),
+    });
+}
+
 export async function compareStatistics(
     projectId: string,
     groupCol?: string,

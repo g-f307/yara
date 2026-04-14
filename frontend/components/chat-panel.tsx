@@ -57,6 +57,9 @@ function getRequestedToolNames(text: string): Set<string> {
   if (/\b(parse|parsear|validar|valide|carregar|processar arquivo)\b/.test(normalized)) {
     requested.add("parseData");
   }
+  if (/\b(qc|qualidade|controle de qualidade|reads|sequenciamento|cobertura|profundidade de sequenciamento)\b/.test(normalized)) {
+    requested.add("analyzeQuality");
+  }
 
   return requested;
 }
@@ -136,7 +139,9 @@ function MessageBubble({ message, allowedToolNames }: { message: any; allowedToo
           // Both `plotly_spec` and `result.data` structures handled
           const spec = result.plotly_spec || result.data;
           
-          if (tool.toolName === "visualizeAlphaDiversity") {
+          if (tool.toolName === "analyzeQuality") {
+            setPlotData('qc', spec);
+          } else if (tool.toolName === "visualizeAlphaDiversity") {
             setPlotData('alpha', spec);
           } else if (tool.toolName === "visualizeBetaDiversity") {
             setPlotData('beta', spec);
@@ -207,12 +212,14 @@ function MessageBubble({ message, allowedToolNames }: { message: any; allowedToo
 
               const toolName = toolPart.toolName
 
-              if (["visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction", "visualizeStatistics"].includes(toolName)) {
+              if (["analyzeQuality", "visualizeAlphaDiversity", "visualizeBetaDiversity", "visualizeTaxonomy", "visualizeRarefaction", "visualizeStatistics"].includes(toolName)) {
                 return (
                   <div key={i} className="rounded border border-border bg-background p-3 w-full shadow-sm max-w-[600px]">
                     <div className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-2">
                       <Microscope className="size-4 text-primary" />
-                      {toolName === "visualizeAlphaDiversity"
+                      {toolName === "analyzeQuality"
+                        ? "QC de Sequenciamento"
+                        : toolName === "visualizeAlphaDiversity"
                         ? "Alpha Diversity Analysis"
                         : toolName === "visualizeBetaDiversity"
                           ? "Beta Diversity Analysis"

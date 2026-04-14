@@ -22,20 +22,24 @@ const fileIcons: Record<string, string> = {
   ".qza": "text-sky-600 dark:text-sky-400",
 }
 
-import { getAlphaDiversity, getBetaDiversity, getTaxonomy, getRarefaction, buildReport } from "@/lib/actions"
+import { buildReport } from "@/lib/actions"
 import { Suspense, useState, useEffect } from "react"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
 import { useResultsStore } from "@/store/use-results-store"
 
 function ResultsTab({ projectId }: { projectId: string }) {
+  const qcPlotData = useResultsStore((state: any) => state.qc);
   const alphaPlotData = useResultsStore((state: any) => state.alpha);
   const betaPlotData = useResultsStore((state: any) => state.beta);
   const taxonomyPlotData = useResultsStore((state: any) => state.taxonomy);
   const rarefactionPlotData = useResultsStore((state: any) => state.rarefaction);
   const statisticsPlotData = useResultsStore((state: any) => state.statistics);
+  const alphaOutliers = alphaPlotData?._stats?.outliers;
+  const rarefactionRecommendation = rarefactionPlotData?._stats?.recommendation;
+  const qcStats = qcPlotData?._stats;
 
-  const handleAddToReport = async (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction', plotData: any, title: string) => {
+  const handleAddToReport = async (type: 'qc' | 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', plotData: any, title: string) => {
     if (!plotData) return;
     const divId = `plot-${type}`;
     const graphDiv = document.getElementById(divId);
@@ -66,6 +70,53 @@ function ResultsTab({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* QC result card */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="size-2 rounded-full bg-amber-500" />
+          <span className="text-sm font-medium text-card-foreground">
+            QC de Sequenciamento
+          </span>
+          {qcStats?.outlier_samples > 0 && (
+            <span className="ml-auto rounded bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
+              {qcStats.outlier_samples} outlier(s)
+            </span>
+          )}
+        </div>
+        <div className="relative h-[360px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
+          {qcPlotData ? (
+            <Suspense fallback={<div className="flex w-full h-full items-center justify-center p-4"><div className="w-8 h-8 rounded-full border-b-2 border-primary animate-spin" /></div>}>
+              <div className="min-w-[500px] min-h-[320px] w-full h-full">
+                <PlotlyPlot divId="plot-qc" data={(qcPlotData as any).data} layout={(qcPlotData as any).layout} />
+              </div>
+            </Suspense>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <BarChart3 className="size-8 text-muted-foreground/40" />
+              <span className="text-xs text-muted-foreground">
+                Peça ao YARA para avaliar o QC dos reads
+              </span>
+            </div>
+          )}
+        </div>
+        {qcStats && (
+          <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+            {qcStats.total_samples} amostra(s), média de {Math.round(qcStats.mean_reads_per_sample).toLocaleString("pt-BR")} reads/amostra.
+          </div>
+        )}
+        <div className="flex items-center gap-2 border-t border-border px-3 py-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => handleAddToReport('qc', qcPlotData, 'QC de Sequenciamento')}
+          >
+            <Plus className="size-3.5" />
+            Add to Report
+          </Button>
+        </div>
+      </div>
+
       {/* PCoA result card */}
       <div className="rounded-lg border border-border bg-card overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
@@ -118,6 +169,11 @@ function ResultsTab({ projectId }: { projectId: string }) {
           <span className="text-sm font-medium text-card-foreground">
             Alpha Diversity
           </span>
+          {alphaOutliers?.n_outliers > 0 && (
+            <span className="ml-auto rounded bg-red-100 px-2 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950/30 dark:text-red-300">
+              {alphaOutliers.n_outliers} outlier(s)
+            </span>
+          )}
         </div>
         <div className="relative h-[450px] w-full min-w-0 bg-background rounded border border-border overflow-auto">
           {alphaPlotData ? (
@@ -135,6 +191,11 @@ function ResultsTab({ projectId }: { projectId: string }) {
             </div>
           )}
         </div>
+        {alphaOutliers?.n_outliers > 0 && (
+          <div className="border-t border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-300">
+            Amostras atípicas: {alphaOutliers.outliers.map((outlier: any) => outlier.sample_id).join(", ")}
+          </div>
+        )}
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
           <Button
             variant="ghost"
@@ -214,6 +275,14 @@ function ResultsTab({ projectId }: { projectId: string }) {
             </div>
           )}
         </div>
+        {rarefactionRecommendation?.recommended_depth && (
+          <div className="border-t border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-300">
+            Profundidade recomendada: {Number(rarefactionRecommendation.recommended_depth).toLocaleString("pt-BR")} sequências.
+            {typeof rarefactionRecommendation.samples_retained === "number" && (
+              <span> Mantém {rarefactionRecommendation.samples_retained} amostra(s).</span>
+            )}
+          </div>
+        )}
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">
           <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs text-muted-foreground hover:text-foreground">
             <Download className="size-3.5" /> Download Data

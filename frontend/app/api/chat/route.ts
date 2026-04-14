@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { auth } from "@clerk/nextjs/server";
-import { getAlphaDiversity, getBetaDiversity, parseFile, getTaxonomy, getRarefaction, getStatistics } from "@/lib/actions";
+import { getAlphaDiversity, getBetaDiversity, parseFile, getTaxonomy, getRarefaction, getStatistics, getQCSummary } from "@/lib/actions";
 
 export const maxDuration = 30; // max 30s Vercel limit
 
@@ -60,7 +60,7 @@ function summarizeToolResult(result: any): any {
         success: unwrapped.success,
         requested: unwrapped.requested,
         error: unwrapped.error,
-        data: unwrapped.data ?? null,
+        data: unwrapped.data ?? unwrapped.stats ?? unwrapped.plotly_spec?._stats ?? null,
         plotTitle: unwrapped.plotly_spec?.layout?.title ?? unwrapped.data?.layout?.title ?? null,
     };
 }
@@ -92,6 +92,9 @@ function getRequestedToolNames(text: string): Set<string> {
     }
     if (/\b(parse|parsear|validar|valide|carregar|processar arquivo)\b/.test(normalized)) {
         requested.add("parseData");
+    }
+    if (/\b(qc|qualidade|controle de qualidade|reads|sequenciamento|cobertura|profundidade de sequenciamento)\b/.test(normalized)) {
+        requested.add("analyzeQuality");
     }
 
     return requested;
@@ -199,6 +202,7 @@ Você pode gerar as seguintes visualizações chamando as ferramentas disponíve
 - visualizeRarefaction: curvas de rarefação por amostra
 - visualizeStatistics: testes estatísticos não-paramétricos entre grupos
 - parseData: valida/parseia arquivos QIIME2 do projeto
+- analyzeQuality: painel de QC com reads por amostra e outliers de cobertura
 
 REGRAS OBRIGATÓRIAS:
 1. Quando o usuário pedir um gráfico, SEMPRE chame a ferramenta correspondente. Nunca apenas descreva o gráfico ou diga que "está gerando" sem chamar a ferramenta.
@@ -372,6 +376,23 @@ O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSectio
                         }
                     }
             })
+            ,
+            analyzeQuality: tool({
+                    description: "Gera um painel de controle de qualidade de sequenciamento (QC), com reads por amostra e detecção de outliers de cobertura.",
+                    parameters: z.object({}),
+                    // @ts-ignore
+                    execute: async () => {
+                        try {
+                            const res = await getQCSummary(projectId);
+                            if (!res.success) {
+                                return { success: false, error: res.error || "Failed to generate QC summary.", requested: "qc" };
+                            }
+                            return { success: true, requested: "qc", plotly_spec: res.data || null, stats: res.stats || null };
+                        } catch (e: any) {
+                            return { success: false, error: e.message || "Unknown error generating QC summary.", requested: "qc" };
+                        }
+                    }
+            })
         };
 
         const activeTools = isSystemInstruction
@@ -511,6 +532,7 @@ O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSectio
                         visualizeTaxonomy: "taxonomy",
                         visualizeRarefaction: "rarefaction",
                         visualizeStatistics: "statistics",
+                        analyzeQuality: "qc",
                     };
 
                     for (const assistantMessage of responseMessages) {

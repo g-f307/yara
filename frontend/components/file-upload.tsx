@@ -9,10 +9,13 @@ interface FileUploadProps {
 }
 
 import { UploadDropzone } from "@/lib/uploadthing";
-import { createProjectFile, validateProjectData } from "@/lib/actions";
+import { createProjectFile, validateProjectData, getQCSummary } from "@/lib/actions";
+import { useResultsStore } from "@/store/use-results-store";
 import { toast } from "sonner";
 
 export function FileUpload({ compact = false, projectId, onFileSelect }: FileUploadProps) {
+  const setPlotData = useResultsStore((state: any) => state.setPlotData);
+
   return (
     <div className={cn("w-full", compact && "p-2")}>
       <UploadDropzone
@@ -48,7 +51,13 @@ export function FileUpload({ compact = false, projectId, onFileSelect }: FileUpl
                   } else if (warnings.length > 0) {
                     toast.warning(warnings[0]);
                   } else {
-                    toast.info("Upload concluido. Peça uma análise ao YARA para continuar.");
+                    toast.info("Upload concluído. Peça uma análise ao YARA para continuar.");
+                  }
+
+                  const qc = await getQCSummary(projectId);
+                  if (qc.success && qc.data) {
+                    setPlotData("qc", qc.data);
+                    toast.success("QC de sequenciamento gerado automaticamente.");
                   }
                 } else {
                   toast.error(validation.error || "Não foi possível validar os arquivos enviados.");

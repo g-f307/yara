@@ -145,7 +145,12 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 
 // Analytics actions
 
-import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles, compareStatistics, validateProjectData as apiValidateProjectData, useDemoData } from "./api";
+import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles, compareStatistics, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
+
+function withStats(plotlySpec: any, stats: any) {
+    if (!plotlySpec || typeof plotlySpec !== "object") return plotlySpec;
+    return { ...plotlySpec, _stats: stats ?? null };
+}
 
 async function ensureBackendSynched(projectId: string) {
     const pythonCoreUrl = process.env.PYTHON_CORE_URL || "http://localhost:8000";
@@ -226,7 +231,7 @@ export async function getAlphaDiversity(projectId: string, metric: string, group
         const result: any = await analyzeAlpha(projectId, metric, groupCol || "group");
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
-        return { success: true, data: result.plotly_spec };
+        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
@@ -243,7 +248,7 @@ export async function getBetaDiversity(projectId: string, groupCol?: string) {
         const result: any = await computePCoA(projectId, groupCol || "group");
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
-        return { success: true, data: result.plotly_spec };
+        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
@@ -280,7 +285,7 @@ export async function getTaxonomy(projectId: string, level: string = "Phylum") {
         const result: any = await taxonomyBarplot(projectId, level);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
-        return { success: true, data: result.plotly_spec };
+        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
@@ -297,7 +302,7 @@ export async function getRarefaction(projectId: string) {
         const result: any = await analyzeRarefaction(projectId);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
-        return { success: true, data: result.plotly_spec };
+        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
@@ -321,7 +326,24 @@ export async function getStatistics(
         const result: any = await compareStatistics(projectId, groupCol, metricCol, test, group1, group2);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
-        return { success: true, data: result.plotly_spec };
+        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+    } catch (e: any) {
+        console.error(e);
+        return { success: false, error: e.message };
+    }
+}
+
+export async function getQCSummary(projectId: string) {
+    try {
+        const { userId } = await auth();
+        if (!userId) throw new Error("Unauthorized");
+
+        await ensureBackendSynched(projectId);
+
+        const result: any = await qcSummary(projectId);
+        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
+
+        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };

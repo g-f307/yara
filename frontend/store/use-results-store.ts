@@ -9,6 +9,7 @@ export interface ReportItem {
 }
 
 const PLOT_LABELS: Record<string, string> = {
+  qc: 'QC',
   alpha: 'Alpha Diversity',
   beta: 'PCoA',
   taxonomy: 'Taxonomy',
@@ -17,6 +18,7 @@ const PLOT_LABELS: Record<string, string> = {
 };
 
 interface ResultsState {
+  qc: any | null;
   alpha: any | null;
   beta: any | null;
   taxonomy: any | null;
@@ -26,7 +28,7 @@ interface ResultsState {
   reportItems: ReportItem[];
   pendingNotifications: Array<{ type: string; label: string }>;
   
-  setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => void;
+  setPlotData: (type: 'qc' | 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => void;
   setActiveTab: (tabId: string) => void;
   clearNotifications: () => void;
   
@@ -39,6 +41,7 @@ interface ResultsState {
 }
 
 export const useResultsStore = create<ResultsState>((set) => ({
+  qc: null,
   alpha: null,
   beta: null,
   taxonomy: null,
@@ -48,7 +51,7 @@ export const useResultsStore = create<ResultsState>((set) => ({
   reportItems: [],
   pendingNotifications: [],
   
-  setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => set((state: ResultsState) => ({
+  setPlotData: (type: 'qc' | 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => set((state: ResultsState) => ({
     ...state, 
     [type]: data,
     pendingNotifications: [
@@ -66,5 +69,5 @@ export const useResultsStore = create<ResultsState>((set) => ({
   })),
   clearReport: () => set({ reportItems: [] }),
   
-  reset: () => set({ alpha: null, beta: null, taxonomy: null, rarefaction: null, statistics: null, activeTab: 'files', reportItems: [], pendingNotifications: [] })
+  reset: () => set({ qc: null, alpha: null, beta: null, taxonomy: null, rarefaction: null, statistics: null, activeTab: 'files', reportItems: [], pendingNotifications: [] })
 }));
