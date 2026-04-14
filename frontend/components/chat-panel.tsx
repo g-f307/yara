@@ -295,11 +295,13 @@ export function ChatPanel({
   hasProject,
   projectId = "default",
   initialMessages = [],
+  initialSuggestion,
   onOpenResults,
 }: {
   hasProject: boolean
   projectId?: string
   initialMessages?: any[]
+  initialSuggestion?: string | null
   onOpenResults?: () => void
 }) {
   const { messages, setMessages, sendMessage, status } = useChat({
@@ -329,6 +331,13 @@ export function ChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const isLoading = status === "streaming" || status === "submitted"
+  const sentSuggestionRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!initialSuggestion || sentSuggestionRef.current === initialSuggestion || messages.length > 0) return;
+    sentSuggestionRef.current = initialSuggestion;
+    sendMessage({ text: initialSuggestion });
+  }, [initialSuggestion, messages.length, sendMessage]);
 
   useEffect(() => {
     if (textareaRef.current) {

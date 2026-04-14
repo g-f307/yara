@@ -467,15 +467,49 @@ export async function buildReport(projectId: string, format: "pdf" | "docx", ite
         const { userId } = await auth();
         if (!userId) throw new Error("Unauthorized");
 
-        const project = await prisma.project.findUnique({ where: { id: projectId } });
+        const project = await prisma.project.findFirst({
+            where: {
+                id: projectId,
+                user: { clerkId: userId },
+            },
+            include: {
+                files: true,
+                _count: { select: { sessions: true } },
+            },
+        });
         if (!project) throw new Error("Project not found");
 
-        const sections = items.map((item: any) => ({
+        let summaries: any[] = [];
+        try {
+            summaries = await (prisma as any).analysisSummary.findMany({
+                where: { projectId },
+                orderBy: { createdAt: "desc" },
+            });
+        } catch (error) {
+            console.warn("AnalysisSummary is not available for report metadata.", error);
+        }
+
+        const metaSection = {
+            title: "Metadados do Projeto",
+            content: [
+                `Projeto: ${project.name}`,
+                `Arquivos analisados: ${project.files.length > 0 ? project.files.map((file: any) => file.name).join(", ") : "nenhum arquivo registrado no banco"}`,
+                `Sessões de análise: ${project._count.sessions}`,
+                `Análises realizadas: ${summaries.length > 0 ? summaries.map((summary: any) => summary.type).join(", ") : "sem histórico analítico estruturado"}`,
+                `Data de exportação: ${new Date().toLocaleDateString("pt-BR")}`,
+            ].join("\n"),
+            level: 2,
+        };
+
+        const sections = [
+            metaSection,
+            ...items.map((item: any) => ({
             title: item.title || "Seção de Análise",
             content: item.textNotes || "",
             image_base64: item.base64Image || undefined,
             level: 2
-        }));
+            }))
+        ];
 
         const result: any = await apiGenerateReport(sections, project.name, format);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);

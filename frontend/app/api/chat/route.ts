@@ -38,7 +38,36 @@ function isResolvedToolPayload(payload: any): boolean {
         || payload?.output != null;
 }
 
+function unwrapToolResult(result: any): any {
+    if (result && typeof result === "object" && "type" in result && "value" in result && !result.success) {
+        if (typeof result.value === "string") {
+            try {
+                return JSON.parse(result.value);
+            } catch {
+                return result.value;
+            }
+        }
+        return result.value;
+    }
+    return result;
+}
+
+function summarizeToolResult(result: any): any {
+    const unwrapped = unwrapToolResult(result);
+    if (!unwrapped || typeof unwrapped !== "object") return unwrapped;
+
+    return {
+        success: unwrapped.success,
+        requested: unwrapped.requested,
+        error: unwrapped.error,
+        data: unwrapped.data ?? null,
+        plotTitle: unwrapped.plotly_spec?.layout?.title ?? unwrapped.data?.layout?.title ?? null,
+    };
+}
+
 function getRequestedToolNames(text: string): Set<string> {
+    if (text.trim().startsWith("[Sistema]")) return new Set();
+
     const normalized = text
         .toLowerCase()
         .normalize("NFD")
@@ -135,7 +164,25 @@ export async function POST(req: Request) {
 
     const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user");
     const lastUserText = getTextFromMessage(lastUserMessage);
+    const isSystemInstruction = lastUserText.trim().startsWith("[Sistema]");
     const requestedToolNames = getRequestedToolNames(lastUserText);
+    let analysisHistory = "";
+
+    try {
+        const summaries = await (prisma as any).analysisSummary.findMany({
+            where: { projectId },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+        });
+
+        if (summaries.length > 0) {
+            analysisHistory = `\n\nANÁLISES JÁ REALIZADAS NESTE PROJETO:\n${summaries.map((summary: any) =>
+                `- ${summary.type.toUpperCase()} (${summary.createdAt.toLocaleDateString("pt-BR")}): métrica=${summary.metric ?? "N/A"}, grupo=${summary.groupCol ?? "sem grupo"}`
+            ).join("\n")}`;
+        }
+    } catch (error) {
+        console.warn("AnalysisSummary is not available yet.", error);
+    }
 
     // Build the system prompt now that we know which tools have already been called
     const alreadyCalledSection = resolvedToolNames.size > 0
@@ -159,8 +206,9 @@ REGRAS OBRIGATÓRIAS:
 3. Se a ferramenta retornar success:true, confirme que o gráfico foi gerado e descreva brevemente o resultado.
 4. Se a ferramenta retornar success:false, informe o erro ao usuário e sugira o que tentar.
 5. Seja objetivo e científico. Não especule sobre resultados sem dados.
+6. Se receber uma mensagem iniciada com [Sistema], responda somente com orientação textual curta. Não chame ferramentas nesse caso.
 
-O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSection}`;
+O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSection}${analysisHistory}`;
 
 
     // Resolved ones must be preserved so the model knows what was already done.
@@ -326,21 +374,14 @@ O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSectio
             })
         };
 
-        const activeTools = Object.fromEntries(
-            Object.entries(allTools).filter(([name]) => {
-                if (requestedToolNames.size > 0) return requestedToolNames.has(name);
-                return name === "parseData" || !resolvedToolNames.has(name);
-            })
-        );
-
-        if (process.env.NODE_ENV !== "production") {
-            console.log("CHAT_TOOL_FILTER", {
-                lastUserText,
-                requestedToolNames: [...requestedToolNames],
-                resolvedToolNames: [...resolvedToolNames],
-                activeTools: Object.keys(activeTools),
-            });
-        }
+        const activeTools = isSystemInstruction
+            ? {}
+            : Object.fromEntries(
+                Object.entries(allTools).filter(([name]) => {
+                    if (requestedToolNames.size > 0) return requestedToolNames.has(name);
+                    return name === "parseData" || !resolvedToolNames.has(name);
+                })
+            );
 
         const result = streamText({
             model: google("gemini-2.5-flash-lite"),
@@ -463,6 +504,36 @@ O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSectio
                     }
 
                     const currentTurnMessages = [...incomingMessages, ...responseMessages];
+
+                    const typeMap: Record<string, string> = {
+                        visualizeAlphaDiversity: "alpha",
+                        visualizeBetaDiversity: "beta",
+                        visualizeTaxonomy: "taxonomy",
+                        visualizeRarefaction: "rarefaction",
+                        visualizeStatistics: "statistics",
+                    };
+
+                    for (const assistantMessage of responseMessages) {
+                        for (const invocation of assistantMessage.toolInvocations ?? []) {
+                            const analysisType = typeMap[invocation.toolName];
+                            const result = unwrapToolResult(invocation.result);
+                            if (!analysisType || !result?.success) continue;
+
+                            try {
+                                await (prisma as any).analysisSummary.create({
+                                    data: {
+                                        projectId,
+                                        type: analysisType,
+                                        metric: invocation.args?.metric ?? invocation.args?.metricCol ?? invocation.args?.level ?? null,
+                                        groupCol: invocation.args?.groupCol ?? null,
+                                        resultJson: summarizeToolResult(result),
+                                    },
+                                });
+                            } catch (error) {
+                                console.warn("Could not save AnalysisSummary.", error);
+                            }
+                        }
+                    }
 
                     if (session) {
                         const previousMessages = JSON.parse(session.messages as string || "[]");

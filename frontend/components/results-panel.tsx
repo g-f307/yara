@@ -429,14 +429,24 @@ export function ResultsPanel({ className, projectId, files = [], sessions = [] }
     ['files', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
   );
   const setActiveTab = useResultsStore((state: any) => state.setActiveTab);
+  const pendingNotifications = useResultsStore((state: any) => state.pendingNotifications);
+  const clearNotifications = useResultsStore((state: any) => state.clearNotifications);
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    if (tabId === "results") clearNotifications();
+  };
 
   return (
     <div className={cn("flex h-full flex-col border-l border-border bg-background", className)}>
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex h-full flex-col">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="flex h-full flex-col">
         <div className="shrink-0 border-b border-border px-3 pt-3">
           <TabsList className="w-full">
-            <TabsTrigger value="results" className="flex-1">
+            <TabsTrigger value="results" className="flex-1 relative">
               Results
+              {pendingNotifications.length > 0 && activeTab !== "results" && (
+                <span className="absolute right-2 top-1.5 size-2 rounded-full bg-primary" />
+              )}
             </TabsTrigger>
             <TabsTrigger value="report" className="flex-1">
               Report

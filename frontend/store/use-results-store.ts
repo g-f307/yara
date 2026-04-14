@@ -8,6 +8,14 @@ export interface ReportItem {
   textNotes?: string;   // User's manual text
 }
 
+const PLOT_LABELS: Record<string, string> = {
+  alpha: 'Alpha Diversity',
+  beta: 'PCoA',
+  taxonomy: 'Taxonomy',
+  rarefaction: 'Rarefaction',
+  statistics: 'Statistics',
+};
+
 interface ResultsState {
   alpha: any | null;
   beta: any | null;
@@ -16,9 +24,11 @@ interface ResultsState {
   statistics: any | null;
   activeTab: string;
   reportItems: ReportItem[];
+  pendingNotifications: Array<{ type: string; label: string }>;
   
   setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => void;
   setActiveTab: (tabId: string) => void;
+  clearNotifications: () => void;
   
   addReportItem: (item: ReportItem) => void;
   removeReportItem: (id: string) => void;
@@ -36,13 +46,18 @@ export const useResultsStore = create<ResultsState>((set) => ({
   statistics: null,
   activeTab: 'files',
   reportItems: [],
+  pendingNotifications: [],
   
   setPlotData: (type: 'alpha' | 'beta' | 'taxonomy' | 'rarefaction' | 'statistics', data: any) => set((state: ResultsState) => ({
     ...state, 
     [type]: data,
-    activeTab: type // Auto-switch to the newly generated plot tab
+    pendingNotifications: [
+      ...state.pendingNotifications.filter((notification) => notification.type !== type),
+      { type, label: PLOT_LABELS[type] },
+    ],
   })),
   setActiveTab: (tabId: string) => set({ activeTab: tabId }),
+  clearNotifications: () => set({ pendingNotifications: [] }),
   
   addReportItem: (item: ReportItem) => set((state: ResultsState) => ({ reportItems: [...state.reportItems, item] })),
   removeReportItem: (id: string) => set((state: ResultsState) => ({ reportItems: state.reportItems.filter((i: ReportItem) => i.id !== id) })),
@@ -51,5 +66,5 @@ export const useResultsStore = create<ResultsState>((set) => ({
   })),
   clearReport: () => set({ reportItems: [] }),
   
-  reset: () => set({ alpha: null, beta: null, taxonomy: null, rarefaction: null, statistics: null, activeTab: 'files', reportItems: [] })
+  reset: () => set({ alpha: null, beta: null, taxonomy: null, rarefaction: null, statistics: null, activeTab: 'files', reportItems: [], pendingNotifications: [] })
 }));

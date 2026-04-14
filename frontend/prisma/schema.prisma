@@ -31,6 +31,7 @@ model Project {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   files       File[]
   sessions    AnalysisSession[]
+  summaries   AnalysisSummary[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -58,6 +59,19 @@ model AnalysisSession {
   messages  Json     // Chat history storing Vercel AI SDK CoreMessages
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model AnalysisSummary {
+  id         String   @id @default(uuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type       String   // alpha, beta, taxonomy, rarefaction, statistics
+  metric     String?
+  groupCol   String?
+  resultJson Json
+  createdAt  DateTime @default(now())
 
   @@index([projectId])
 }

@@ -36,6 +36,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
         return false;
     });
     const [activatingDemo, setActivatingDemo] = useState(false);
+    const [initialSuggestion, setInitialSuggestion] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [resultsOpen, setResultsOpen] = useState(false);
 
@@ -127,6 +128,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                                             projectId={projectId}
                                             hasProject={true}
                                             initialMessages={initialMessages}
+                                            initialSuggestion={initialSuggestion}
                                         />
                                     </ResizablePanel>
                                     <ResizableHandle className="w-1.5 hover:bg-primary/20 transition-colors" />
@@ -143,6 +145,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                                     projectId={projectId}
                                     hasProject={true}
                                     initialMessages={initialMessages}
+                                    initialSuggestion={initialSuggestion}
                                 />
                             </div>
                         </>
@@ -160,7 +163,16 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                                     </div>
                                     <div className="bg-background rounded-xl p-4 md:p-6 border shadow-sm flex flex-col items-center gap-4">
                                         <div className="w-full">
-                                            <FileUpload projectId={projectId} onFileSelect={() => setHasData(true)} />
+                                            <FileUpload
+                                                projectId={projectId}
+                                                onFileSelect={(_, validation) => {
+                                                    const detected = validation?.detected_types ?? [];
+                                                    setInitialSuggestion(
+                                                        `[Sistema] O usuário acabou de enviar dados para este projeto. Tipos de análise detectados: ${detected.length > 0 ? detected.join(", ") : "não detectados automaticamente"}. Responda em português brasileiro com uma confirmação breve e exatamente 3 sugestões de próximos passos, sem executar ferramentas ainda.`
+                                                    );
+                                                    setHasData(true);
+                                                }}
+                                            />
                                         </div>
                                         <div className="text-sm text-muted-foreground flex items-center gap-2">
                                             <span>ou apenas</span>
@@ -177,6 +189,9 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                                                             detected.length > 0
                                                                 ? `Demonstração pronta para: ${detected.join(", ")}`
                                                                 : "Demonstração pronta."
+                                                        );
+                                                        setInitialSuggestion(
+                                                            `[Sistema] Os dados de demonstração foram ativados neste projeto. Tipos de análise detectados: ${detected.length > 0 ? detected.join(", ") : "alpha, beta, taxonomy, rarefaction"}. Responda em português brasileiro com uma confirmação breve e exatamente 3 sugestões de próximos passos, sem executar ferramentas ainda.`
                                                         );
                                                         setHasData(true);
                                                     } catch (error: any) {

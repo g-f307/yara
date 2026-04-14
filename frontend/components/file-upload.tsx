@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 interface FileUploadProps {
   compact?: boolean
   projectId?: string
-  onFileSelect?: (file: File) => void
+  onFileSelect?: (file: File, validation?: any) => void
 }
 
 import { UploadDropzone } from "@/lib/uploadthing";
@@ -52,6 +52,11 @@ export function FileUpload({ compact = false, projectId, onFileSelect }: FileUpl
                   }
                 } else {
                   toast.error(validation.error || "Não foi possível validar os arquivos enviados.");
+                }
+
+                if (onFileSelect) {
+                  onFileSelect(new File([], res[0].name), validation.success ? validation.data : undefined);
+                  return;
                 }
               }
               if (onFileSelect) {

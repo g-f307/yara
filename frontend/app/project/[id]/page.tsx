@@ -43,7 +43,6 @@ export default async function ProjectPage({
   ]);
 
   const initialMessages = sessionResult.success ? sessionResult.messages : [];
-  console.log("INITIAL MESSAGES FROM DB:", initialMessages.length, initialMessages);
 
   return <ProjectLayoutClient 
     projectId={projectId} 
