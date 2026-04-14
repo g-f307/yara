@@ -1,6 +1,11 @@
 sample-id	shannon	observed_features	faith_pd	Grupo
-Amostra1	4.5	100	12.5	Tratamento
-Amostra2	3.2	80	10.1	Tratamento
-Amostra3	4.8	110	13.0	Controle
-Amostra4	5.1	120	14.5	Controle
-Amostra5	2.9	70	9.5	Tratamento
+Amostra1	3.82	151	7.41	Tratamento
+Amostra2	3.44	98	15.65	Tratamento
+Amostra3	3.18	279	19.65	Tratamento
+Amostra4	4.16	286	19.16	Tratamento
+Amostra5	4.48	241	20.69	Tratamento
+Amostra6	3.08	280	15.36	Controle
+Amostra7	2.91	58	7.97	Controle
+Amostra8	4.02	174	12.79	Controle
+Amostra9	3.76	285	16.28	Controle
+Amostra10	9.85	520	38.40	Controle
