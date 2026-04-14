@@ -127,3 +127,64 @@ class AlphaDiversityAnalyzer:
             'p_value': float(pvalue),
             'significant': bool(pvalue < 0.05)
         }
+
+    def detect_outliers(self, metric: str = 'shannon', method: str = 'zscore') -> Dict:
+        """
+        Detecta amostras com valores atípicos em uma métrica de diversidade alfa.
+        """
+        if metric not in self.data.columns:
+            available = list(self.data.columns)
+            raise ValueError(f"Métrica '{metric}' não encontrada. Disponíveis: {available}")
+
+        serie = self.data[metric].dropna()
+        if serie.empty:
+            return {
+                'method': method,
+                'metric': metric,
+                'n_outliers': 0,
+                'outliers': [],
+                'per_sample': {},
+            }
+
+        if method == 'iqr':
+            q1 = serie.quantile(0.25)
+            q3 = serie.quantile(0.75)
+            iqr = q3 - q1
+            lower = q1 - 1.5 * iqr
+            upper = q3 + 1.5 * iqr
+            outlier_mask = (serie < lower) | (serie > upper)
+            scores = {idx: float(serie.loc[idx]) for idx in serie.index}
+            thresholds = {'lower': float(lower), 'upper': float(upper)}
+        else:
+            mean = serie.mean()
+            std = serie.std()
+            zscores = (serie - mean) / std if std > 0 else serie * 0
+            outlier_mask = zscores.abs() > 2.0
+            scores = zscores.to_dict()
+            thresholds = {'zscore_abs': 2.0}
+
+        outliers = []
+        for sample_id in outlier_mask[outlier_mask].index:
+            value = float(serie.loc[sample_id])
+            outliers.append({
+                'sample_id': str(sample_id),
+                'value': value,
+                'score': float(scores.get(sample_id, 0)),
+                'direction': 'high' if value > serie.mean() else 'low',
+            })
+
+        return {
+            'method': method,
+            'metric': metric,
+            'thresholds': thresholds,
+            'n_outliers': len(outliers),
+            'outliers': outliers,
+            'per_sample': {
+                str(idx): {
+                    'is_outlier': bool(outlier_mask.get(idx, False)),
+                    'value': float(serie.loc[idx]),
+                    'score': float(scores.get(idx, 0)),
+                }
+                for idx in serie.index
+            },
+        }

@@ -11,7 +11,7 @@ Autor: Projeto YARA - IFAM
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import parse, alpha, beta, taxonomy, rarefaction, statistics, reports, project
+from routers import parse, alpha, beta, taxonomy, rarefaction, statistics, reports, project, qc
 
 app = FastAPI(
     title="YARA Python Core",
@@ -37,6 +37,7 @@ app.include_router(rarefaction.router)
 app.include_router(statistics.router)
 app.include_router(reports.router)
 app.include_router(project.router)
+app.include_router(qc.router)
 
 
 @app.get("/health")

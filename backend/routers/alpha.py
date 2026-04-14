@@ -53,6 +53,9 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
             "n_samples": len(df),
         }
 
+        outliers = analyzer.detect_outliers(request.metric)
+        result["outliers"] = outliers
+
         # Comparação entre grupos (se solicitada)
         if request.group_col and request.group_col in df.columns:
             try:
@@ -75,6 +78,19 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
                 "name": str(group),
                 "boxmean": True,
             })
+        outlier_ids = {o["sample_id"] for o in result.get("outliers", {}).get("outliers", [])}
+        if outlier_ids:
+            outlier_df = df[df.index.astype(str).isin(outlier_ids)]
+            traces.append({
+                "type": "scatter",
+                "mode": "markers",
+                "x": outlier_df[request.group_col].astype(str).tolist(),
+                "y": [float(v) for v in outlier_df[request.metric].dropna().tolist()],
+                "name": "Outliers",
+                "marker": {"color": "#ef4444", "size": 11, "symbol": "x"},
+                "hovertemplate": "<b>%{text}</b><br>%{y:.4f}<extra></extra>",
+                "text": outlier_df.index.astype(str).tolist(),
+            })
         plotly_spec = {
             "data": traces,
             "layout": {
@@ -86,13 +102,27 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
         }
     else:
         values = df[request.metric].dropna().tolist()
-        plotly_spec = {
-            "data": [{
+        traces = [{
                 "type": "box",
                 "y": [float(v) for v in values],
                 "name": request.metric,
                 "boxmean": True,
-            }],
+        }]
+        outlier_ids = {o["sample_id"] for o in result.get("outliers", {}).get("outliers", [])}
+        if outlier_ids:
+            outlier_df = df[df.index.astype(str).isin(outlier_ids)]
+            traces.append({
+                "type": "scatter",
+                "mode": "markers",
+                "x": [request.metric] * len(outlier_df),
+                "y": [float(v) for v in outlier_df[request.metric].dropna().tolist()],
+                "name": "Outliers",
+                "marker": {"color": "#ef4444", "size": 11, "symbol": "x"},
+                "hovertemplate": "<b>%{text}</b><br>%{y:.4f}<extra></extra>",
+                "text": outlier_df.index.astype(str).tolist(),
+            })
+        plotly_spec = {
+            "data": traces,
             "layout": {
                 "title": f"Diversidade Alfa — {request.metric}",
                 "yaxis": {"title": request.metric.capitalize()},
