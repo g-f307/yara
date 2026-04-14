@@ -40,6 +40,7 @@ Thumbs.db
 # Next.js
 frontend/.next/
 frontend/node_modules/
+frontend/tsconfig.tsbuildinfo
 
 # Modelos Rasa (legado)
 models/
@@ -50,5 +51,3 @@ python-core/venv/
 python-core/.venv/
 
 .codex
-YARA_*
-yara_*

@@ -14,8 +14,9 @@ O repositório está em fase de integração do produto web. A antiga base Rasa 
 - Upload com Uploadthing, protegido por autenticação Clerk.
 - Chat via Vercel AI SDK, com ferramentas que chamam o backend científico e retornam especificações Plotly para renderização no frontend.
 - Geração inicial de relatórios PDF e DOCX no backend.
-
-Algumas integrações ainda estão em evolução, especialmente a configuração definitiva do provedor de LLM, o fluxo de provisionamento do banco no Docker Compose e o endurecimento de segurança/validação de arquivos QIIME 2.
+- Validação pós-upload para detectar quais análises estão disponíveis no projeto.
+- Modo demonstração com dados mock reais no backend.
+- Histórico analítico estruturado para alimentar contexto e relatórios.
 
 ## Arquitetura
 
@@ -36,7 +37,7 @@ yara/
 │   ├── data/mock/             Dados de exemplo para desenvolvimento
 │   └── requirements.txt
 │
-├── docker-compose.yml         Orquestração local do frontend e backend
+├── docker-compose.yml         Orquestração local do frontend, backend e PostgreSQL
 ├── AGENTS.md                  Contexto técnico e regras de evolução do projeto
 └── README.md
 ```
@@ -80,8 +81,11 @@ Banco de dados:
 - Chat em português brasileiro com ferramentas de análise.
 - Sincronização de arquivos enviados para o backend Python.
 - Visualizações Plotly para diversidade alfa, diversidade beta, taxonomia e rarefação.
-- Endpoints REST para estatísticas e relatórios.
+- Visualização conversacional de estatística não-paramétrica.
+- Endpoints REST para estatísticas, validação de dados, modo demo e relatórios.
 - Persistência de sessões de análise no banco.
+- Persistência de resumos analíticos por projeto.
+- Exportação de relatórios com metadados do projeto.
 - Modo claro/escuro no frontend.
 
 ## Endpoints do Backend
@@ -92,7 +96,9 @@ O backend FastAPI expõe os seguintes endpoints:
 GET  /health
 
 POST /api/parse
+POST /api/parse/validate
 POST /api/project/sync
+POST /api/project/use-demo
 GET  /api/project/status/{project_id}
 
 POST /api/alpha/analyze
@@ -118,21 +124,23 @@ Crie os arquivos de ambiente localmente. Não versionar chaves, URLs privadas ou
 
 ```env
 DATABASE_URL=
+GOOGLE_GENERATIVE_AI_API_KEY=
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
 CLERK_SECRET_KEY=
+CLERK_WEBHOOK_SECRET=
 UPLOADTHING_SECRET=
 UPLOADTHING_APP_ID=
-PYTHON_CORE_URL=http://localhost:8000
-NEXT_PUBLIC_PYTHON_CORE_URL=http://localhost:8000
+PYTHON_CORE_URL=http://backend:8000
 ```
 
-O chat usa o provedor configurado no código do Vercel AI SDK. No estado atual do repositório, a rota `frontend/app/api/chat/route.ts` usa `@ai-sdk/google`, então também é necessário configurar a variável de API correspondente ao provedor usado no ambiente de execução.
+O chat usa `@ai-sdk/google` no estado atual do repositório.
 
 `backend/.env`:
 
 ```env
 DATABASE_URL=
 STORAGE_PATH=./uploads
+MAX_FILE_SIZE_BYTES=524288000
 ```
 
 ## Execução Local
@@ -150,6 +158,12 @@ Serviços esperados:
 - Documentação FastAPI: `http://localhost:8000/docs`
 
 Observação: o `docker-compose.yml` atual sobe frontend e backend. O `DATABASE_URL` configurado para o frontend aponta para PostgreSQL, mas o serviço de banco ainda precisa estar disponível separadamente ou ser adicionado ao Compose.
+O `docker-compose.yml` sobe frontend, backend e PostgreSQL. Após alterar o schema Prisma, sincronize o banco dentro do container:
+
+```bash
+docker compose exec frontend npx prisma generate
+docker compose exec frontend npx prisma db push
+```
 
 ### Opção 2: execução manual
 
@@ -182,6 +196,7 @@ O schema Prisma define os seguintes modelos:
 - `Project`: projeto de análise pertencente a um usuário.
 - `File`: arquivo enviado e associado a um projeto.
 - `AnalysisSession`: histórico de mensagens e análises por projeto.
+- `AnalysisSummary`: resumo estruturado de análises realizadas no projeto.
 
 Após configurar `DATABASE_URL`, gere o cliente Prisma:
 
@@ -202,14 +217,12 @@ Use migrações ou sincronização de schema conforme o fluxo adotado no ambient
 6. O backend executa a análise científica e retorna dados estruturados e especificações Plotly.
 7. O frontend renderiza o gráfico no painel de resultados e mantém o histórico da sessão.
 
-## Áreas em Desenvolvimento
+## Próximos Passos
 
-- Finalizar a configuração definitiva do provedor LLM do produto.
-- Adicionar o PostgreSQL ao Docker Compose ou documentar um fluxo padrão com banco externo.
-- Reforçar a validação de conteúdo dos uploads, especialmente arquivos `.qzv` e `.qza`.
 - Consolidar testes automatizados para os endpoints científicos.
-- Completar o fluxo de relatórios com exportação estável de artefatos e URLs de download.
-- Refinar a criação de usuários a partir do Clerk, substituindo dados temporários por webhook ou sincronização robusta.
+- Evoluir a validação científica de qualidade dos arquivos enviados.
+- Refinar os templates de relatório para submissão científica.
+- Ampliar o contexto analítico persistente usado pelo assistente.
 
 ## Diretrizes de Evolução
 
