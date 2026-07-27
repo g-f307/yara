@@ -6,7 +6,8 @@
     "dev": "npx prisma generate && next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node lib/authorization-policy.test.cjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.34",
