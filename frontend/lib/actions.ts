@@ -4,6 +4,11 @@ import { prisma } from "@/lib/db";
 import { revalidatePath } from "next/cache";
 
 import { auth, currentUser } from "@clerk/nextjs/server";
+import {
+    requireOwnedProject,
+    requireOwnedProjectWithFiles,
+    requireProjectFile,
+} from "@/lib/authorization";
 
 export async function getUserProjects() {
     try {
@@ -72,19 +77,9 @@ export async function createProject(name: string, description?: string) {
 
 export async function deleteProject(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await requireOwnedProject(projectId);
 
-        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-        if (!user) throw new Error("User not found");
-
-        // Verify ownership before deleting
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, userId: user.id },
-        });
-        if (!project) throw new Error("Project not found or access denied");
-
-        await prisma.project.delete({ where: { id: projectId } });
+        await prisma.project.delete({ where: { id: project.id } });
 
         revalidatePath("/dashboard");
         return { success: true };
@@ -96,20 +91,10 @@ export async function deleteProject(projectId: string) {
 
 export async function renameProject(projectId: string, newName: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
-
-        const user = await prisma.user.findUnique({ where: { clerkId: userId } });
-        if (!user) throw new Error("User not found");
-
-        // Verify ownership before updating
-        const project = await prisma.project.findFirst({
-            where: { id: projectId, userId: user.id },
-        });
-        if (!project) throw new Error("Project not found or access denied");
+        const project = await requireOwnedProject(projectId);
 
         const updated = await prisma.project.update({
-            where: { id: projectId },
+            where: { id: project.id },
             data: { name: newName.trim() },
         });
 
@@ -124,13 +109,12 @@ export async function renameProject(projectId: string, newName: string) {
 
 export async function createProjectFile(projectId: string, fileData: { name: string, type: string, url: string, key: string, size: number }) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await requireOwnedProject(projectId);
 
         const file = await prisma.file.create({
             data: {
                 ...fileData,
-                projectId,
+                projectId: project.id,
             },
         });
 
@@ -153,42 +137,37 @@ function withStats(plotlySpec: any, stats: any) {
 }
 
 async function ensureBackendSynched(projectId: string) {
+    const project = await requireOwnedProjectWithFiles(projectId);
     const pythonCoreUrl = process.env.PYTHON_CORE_URL || "http://localhost:8000";
 
-    // Fast check if Python backend already has the files downloaded
+    // Ownership must be proven before disclosing backend state or triggering sync.
     try {
-        const check = await fetch(`${pythonCoreUrl}/api/project/status/${projectId}`, { cache: 'no-store' });
+        const check = await fetch(`${pythonCoreUrl}/api/project/status/${project.id}`, { cache: 'no-store' });
         if (check.ok) {
             const { synced } = await check.json();
-            if (synced) return; // Exit early, skipping database query and sync trigger
+            if (synced) return project;
         }
     } catch (e) {
         console.warn("Could not check python backend sync status, falling back to force sync.", e);
     }
 
-    const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        include: { files: true }
-    });
-    
-    if (project && project.files.length > 0) {
-        await syncProjectFiles(projectId, project.files.map((f: any) => ({
+    if (project.files.length > 0) {
+        await syncProjectFiles(project.id, project.files.map((f: any) => ({
             id: f.id,
             name: f.name,
             type: f.type,
             url: f.url
         })));
     }
+
+    return project;
 }
 
 export async function validateProjectData(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await apiValidateProjectData(projectId);
+        const result: any = await apiValidateProjectData(project.id);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: result.data };
@@ -200,19 +179,10 @@ export async function validateProjectData(projectId: string) {
 
 export async function activateDemoMode(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await requireOwnedProject(projectId);
 
-        const project = await prisma.project.findFirst({
-            where: {
-                id: projectId,
-                user: { clerkId: userId },
-            },
-        });
-        if (!project) throw new Error("Project not found or access denied");
-
-        await useDemoData(projectId);
-        const validation: any = await apiValidateProjectData(projectId);
+        await useDemoData(project.id);
+        const validation: any = await apiValidateProjectData(project.id);
 
         return { success: true, data: validation.data };
     } catch (e: any) {
@@ -223,12 +193,9 @@ export async function activateDemoMode(projectId: string) {
 
 export async function getAlphaDiversity(projectId: string, metric: string, groupCol?: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await analyzeAlpha(projectId, metric, groupCol || "group");
+        const result: any = await analyzeAlpha(project.id, metric, groupCol || "group");
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
@@ -240,12 +207,9 @@ export async function getAlphaDiversity(projectId: string, metric: string, group
 
 export async function getBetaDiversity(projectId: string, groupCol?: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await computePCoA(projectId, groupCol || "group");
+        const result: any = await computePCoA(project.id, groupCol || "group");
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
@@ -257,9 +221,7 @@ export async function getBetaDiversity(projectId: string, groupCol?: string) {
 
 export async function parseFile(projectId: string, fileId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
-
+        await requireProjectFile(projectId, fileId);
         await ensureBackendSynched(projectId);
 
         // MVP: Simulate network delay for python parsing a QIIME 2 QZV zip file
@@ -277,12 +239,9 @@ export async function parseFile(projectId: string, fileId: string) {
 
 export async function getTaxonomy(projectId: string, level: string = "Phylum") {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await taxonomyBarplot(projectId, level);
+        const result: any = await taxonomyBarplot(project.id, level);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
@@ -294,12 +253,9 @@ export async function getTaxonomy(projectId: string, level: string = "Phylum") {
 
 export async function getRarefaction(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await analyzeRarefaction(projectId);
+        const result: any = await analyzeRarefaction(project.id);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
@@ -318,12 +274,9 @@ export async function getStatistics(
     group2?: string
 ) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await compareStatistics(projectId, groupCol, metricCol, test, group1, group2);
+        const result: any = await compareStatistics(project.id, groupCol, metricCol, test, group1, group2);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
@@ -335,12 +288,9 @@ export async function getStatistics(
 
 export async function getQCSummary(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await ensureBackendSynched(projectId);
 
-        await ensureBackendSynched(projectId);
-
-        const result: any = await qcSummary(projectId);
+        const result: any = await qcSummary(project.id);
         if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
 
         return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
@@ -352,18 +302,11 @@ export async function getQCSummary(projectId: string) {
 
 export async function getProjectSession(projectId: string) {
     try {
-        const { userId: clerkId } = await auth();
-        if (!clerkId) throw new Error("Unauthorized");
-
-        const user = await prisma.user.findUnique({ where: { clerkId } });
-        if (!user) {
-            return { success: false, messages: [] };
-        }
+        const project = await requireOwnedProject(projectId);
 
         const session = await prisma.analysisSession.findFirst({
             where: {
-                projectId,
-                project: { userId: user.id }
+                projectId: project.id,
             },
             orderBy: { createdAt: "desc" },
         });
@@ -455,11 +398,10 @@ import { generateReport as apiGenerateReport } from "./api";
 
 export async function getProjectFiles(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await requireOwnedProject(projectId);
 
         const files = await prisma.file.findMany({
-            where: { projectId },
+            where: { projectId: project.id },
             orderBy: { createdAt: "desc" }
         });
         return { success: true, files };
@@ -470,11 +412,10 @@ export async function getProjectFiles(projectId: string) {
 
 export async function getProjectSessions(projectId: string) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const project = await requireOwnedProject(projectId);
 
         const sessions = await prisma.analysisSession.findMany({
-            where: { projectId },
+            where: { projectId: project.id },
             orderBy: { createdAt: "desc" },
             take: 20
         });
@@ -486,13 +427,11 @@ export async function getProjectSessions(projectId: string) {
 
 export async function buildReport(projectId: string, format: "pdf" | "docx", items: any[]) {
     try {
-        const { userId } = await auth();
-        if (!userId) throw new Error("Unauthorized");
+        const ownedProject = await requireOwnedProject(projectId);
 
         const project = await prisma.project.findFirst({
             where: {
-                id: projectId,
-                user: { clerkId: userId },
+                id: ownedProject.id,
             },
             include: {
                 files: true,
@@ -504,7 +443,7 @@ export async function buildReport(projectId: string, format: "pdf" | "docx", ite
         let summaries: any[] = [];
         try {
             summaries = await (prisma as any).analysisSummary.findMany({
-                where: { projectId },
+                where: { projectId: ownedProject.id },
                 orderBy: { createdAt: "desc" },
             });
         } catch (error) {

@@ -6,7 +6,11 @@ import {
 } from "ai";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { auth } from "@clerk/nextjs/server";
+import {
+    AuthenticationRequiredError,
+    requireOwnedProject,
+    ResourceNotFoundError,
+} from "@/lib/authorization";
 import { getAlphaDiversity, getBetaDiversity, parseFile, getTaxonomy, getRarefaction, getStatistics, getQCSummary } from "@/lib/actions";
 
 export const maxDuration = 30; // max 30s Vercel limit
@@ -101,16 +105,28 @@ function getRequestedToolNames(text: string): Set<string> {
 }
 
 export async function POST(req: Request) {
-    // Validate authentication
-    const { userId } = await auth();
-    if (!userId) {
-        return new Response("Unauthorized", { status: 401 });
-    }
+    let messages: any[];
+    let projectId: string;
 
-    const { messages, projectId } = await req.json();
+    try {
+        const body = await req.json();
+        messages = body.messages;
+        projectId = body.projectId;
 
-    if (!projectId) {
-        return new Response("Missing projectId", { status: 400 });
+        if (!projectId || !Array.isArray(messages)) {
+            return new Response("Requisição inválida.", { status: 400 });
+        }
+
+        await requireOwnedProject(projectId);
+    } catch (error) {
+        if (error instanceof AuthenticationRequiredError) {
+            return new Response("Autenticação necessária.", { status: 401 });
+        }
+        if (error instanceof ResourceNotFoundError) {
+            return new Response("Recurso não encontrado.", { status: 404 });
+        }
+        console.error("Failed to authorize chat request:", error);
+        return new Response("Requisição inválida.", { status: 400 });
     }
 
     // systemPrompt will be built after messages are parsed so we can inject resolvedToolNames

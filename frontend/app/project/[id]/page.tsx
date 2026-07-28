@@ -2,6 +2,8 @@ import { getUserProjects, getProjectSession, getProjectFiles, getProjectSessions
 import ProjectLayoutClient from "./client-page"
 import { SidebarProject } from "@/components/project-sidebar"
 import { syncProjectFiles } from "@/lib/api"
+import { requireOwnedProject } from "@/lib/authorization"
+import { notFound } from "next/navigation"
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +13,12 @@ export default async function ProjectPage({
   params: Promise<{ id: string }>
 }) {
   const { id: projectId } = await params
+
+  try {
+    await requireOwnedProject(projectId)
+  } catch {
+    notFound()
+  }
 
   // Fetch real database projects using Prisma Server Action
   const dbProjects = await getUserProjects()
