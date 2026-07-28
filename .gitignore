@@ -51,3 +51,10 @@ python-core/venv/
 python-core/.venv/
 
 .codex
+
+*.pdf
+docs/AGENTS.md
+docs/yara_feature_roadmap.md
+YARA_APRESENTACAO_PARCIAL_PIBIC_2025-2026.pptx
+YARA_DEBITOS_PENDENCIAS.md
+# yara_feature_roadmap.md
