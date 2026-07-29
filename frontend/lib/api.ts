@@ -3,14 +3,14 @@
  * ================
  * Cliente para comunicação com o python-core (FastAPI).
  *
- * Usa NEXT_PUBLIC_PYTHON_CORE_URL em produção (Docker)
- * e fallback para localhost:8000 em desenvolvimento.
+ * Executa somente no servidor e assina cada chamada destinada ao FastAPI.
  */
 
-const isServer = typeof window === "undefined";
-const API_BASE = isServer
-    ? (process.env.PYTHON_CORE_URL ?? "http://localhost:8000")
-    : "/api/core";
+import "server-only";
+
+import { internalApiFetch } from "@/lib/internal-api-auth";
+
+const API_BASE = process.env.PYTHON_CORE_URL ?? "http://localhost:8000";
 
 interface ApiResponse<T = unknown> {
     data: T;
@@ -21,7 +21,7 @@ async function request<T>(
     endpoint: string,
     options: RequestInit = {}
 ): Promise<ApiResponse<T>> {
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const res = await internalApiFetch(`${API_BASE}${endpoint}`, {
         headers: { "Content-Type": "application/json" },
         ...options,
     });
@@ -37,6 +37,7 @@ async function request<T>(
 // ── Endpoints ──────────────────────────────────────
 
 export async function healthCheck() {
+    // /health é deliberadamente público para health checks.
     const res = await fetch(`${API_BASE}/health`);
     return res.json();
 }
