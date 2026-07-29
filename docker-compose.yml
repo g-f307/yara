@@ -26,11 +26,14 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - ./tests:/tests:ro
       - ./data/qiime2:/app/data/qiime2
       - ./backend/uploads:/app/uploads
     environment:
       - STORAGE_PATH=/app/uploads
       - DATABASE_URL=postgresql://yara:yara_password@yara-postgres:5432/yara_db
+      - YARA_INTERNAL_API_SECRET=${YARA_INTERNAL_API_SECRET:?Defina YARA_INTERNAL_API_SECRET no arquivo .env da raiz}
+      - ENVIRONMENT=development
     depends_on:
       db:
         condition: service_healthy
@@ -44,6 +47,7 @@ services:
       - "3001:3001"
     volumes:
       - ./frontend:/app
+      - ./tests:/tests:ro
       - /app/node_modules
       - /app/.next
     env_file:
@@ -51,6 +55,7 @@ services:
     environment:
       - PYTHON_CORE_URL=http://backend:8000
       - DATABASE_URL=postgresql://yara:yara_password@yara-postgres:5432/yara_db?schema=public
+      - YARA_INTERNAL_API_SECRET=${YARA_INTERNAL_API_SECRET:?Defina YARA_INTERNAL_API_SECRET no arquivo .env da raiz}
     depends_on:
       - backend
     restart: unless-stopped

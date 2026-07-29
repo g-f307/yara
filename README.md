@@ -136,6 +136,7 @@ CLERK_WEBHOOK_SECRET=
 UPLOADTHING_SECRET=
 UPLOADTHING_APP_ID=
 PYTHON_CORE_URL=http://backend:8000
+YARA_INTERNAL_API_SECRET=
 ```
 
 O chat usa `@ai-sdk/google` no estado atual do repositório.
@@ -146,7 +147,23 @@ O chat usa `@ai-sdk/google` no estado atual do repositório.
 DATABASE_URL=
 STORAGE_PATH=./uploads
 MAX_FILE_SIZE_BYTES=524288000
+ENVIRONMENT=development
+YARA_INTERNAL_API_SECRET=
 ```
+
+`YARA_INTERNAL_API_SECRET` autentica chamadas internas entre Next.js e FastAPI.
+Use o mesmo valor nos dois serviços, nunca adicione o prefixo `NEXT_PUBLIC_` e
+nunca versione o valor real. Para Docker Compose, copie `.env.example` para
+`.env` na raiz e gere um segredo local:
+
+```bash
+openssl rand -hex 32
+```
+
+O backend exige assinatura HMAC em todas as rotas `/api/*`. A rota `/health`
+permanece pública para health checks. A documentação `/docs`, o schema
+`/openapi.json` e `/redoc` permanecem públicos nesta fase, mas as operações
+protegidas exibidas por eles continuam exigindo assinatura válida.
 
 ## Execução Local
 
