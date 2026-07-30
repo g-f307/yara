@@ -21,6 +21,7 @@ from security.artifact_pipeline import (
     download_to_quarantine,
     inspect_qiime_zip,
     normalize_project_id,
+    read_file_prefix,
     safe_project_dir,
     secure_extract_qiime_zip,
     validate_artifact_content,
@@ -174,6 +175,13 @@ class ArtifactUrlTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ArtifactContentTests(unittest.TestCase):
+    def test_prefix_reader_returns_only_requested_bytes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "large.bin"
+            path.write_bytes(b"A" * (1024 * 1024))
+            self.assertEqual(read_file_prefix(path, 16), b"A" * 16)
+            self.assertEqual(len(read_file_prefix(path, 4096)), 4096)
+
     def test_empty_and_false_extension_are_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
             empty = Path(temporary) / "empty.tsv"

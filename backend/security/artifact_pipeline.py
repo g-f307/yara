@@ -252,8 +252,13 @@ def _reject_disguised_content(prefix: bytes) -> None:
         )
 
 
+def read_file_prefix(path: str | Path, limit: int) -> bytes:
+    with Path(path).open("rb") as input_file:
+        return input_file.read(limit)
+
+
 def _validate_table(path: Path, extension: str) -> None:
-    prefix = path.read_bytes()[:4096]
+    prefix = read_file_prefix(path, 4096)
     _reject_disguised_content(prefix)
     if b"\x00" in prefix:
         raise ArtifactSecurityError(
@@ -352,7 +357,7 @@ def validate_artifact_content(path: Path, extension: str, limits: ArtifactLimits
     size = path.stat().st_size
     if size == 0:
         raise ArtifactSecurityError("EMPTY_FILE", "O arquivo enviado está vazio.")
-    prefix = path.read_bytes()[:16]
+    prefix = read_file_prefix(path, 16)
     if extension in {".qza", ".qzv"}:
         if not prefix.startswith(ZIP_MAGIC):
             raise ArtifactSecurityError(

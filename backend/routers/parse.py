@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 from analysis.qiime_parser import QIIME2Parser, load_qiime2_data
-from security.artifact_pipeline import ArtifactSecurityError
+from security.artifact_pipeline import ArtifactSecurityError, read_file_prefix
 
 router = APIRouter(prefix="/api/parse", tags=["parse"])
 
@@ -51,7 +51,7 @@ def _read_table_for_validation(path: Path) -> pd.DataFrame:
         return pd.read_csv(path, index_col=0)
 
     if path.suffix in [".qzv", ".qza"]:
-        if not path.read_bytes().startswith(b'PK\x03\x04'):
+        if not read_file_prefix(path, 4).startswith(b'PK\x03\x04'):
             raise ValueError("arquivo QIIME 2 inválido: conteúdo não é ZIP.")
         df = load_qiime2_data(str(path), data_type="auto")
         if df is None:
