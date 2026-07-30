@@ -133,12 +133,21 @@ class InternalApiAuthMiddleware:
             )
             return
 
-        body = await self._read_body(receive)
         headers = {name.lower(): value for name, value in scope["headers"]}
         timestamp = self._decode_header(headers.get(TIMESTAMP_HEADER))
         signature = self._decode_header(headers.get(SIGNATURE_HEADER))
-        path_with_query = self._path_with_query(scope)
+        if not timestamp or not signature:
+            await self._send_error(
+                scope,
+                receive,
+                send,
+                status_code=401,
+                message="Requisição não autorizada.",
+            )
+            return
 
+        body = await self._read_body(receive)
+        path_with_query = self._path_with_query(scope)
         if not is_signature_valid(
             secret=secret,
             method=scope["method"],

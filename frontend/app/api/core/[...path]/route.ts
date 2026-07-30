@@ -38,7 +38,6 @@ async function proxyToPythonCore(req: NextRequest, context: RouteContext) {
   });
 
   const responseHeaders = new Headers();
-  const contentType = res.headers.get("content-type");
   for (const name of [
     "accept-ranges",
     "cache-control",

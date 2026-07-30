@@ -5,7 +5,7 @@ import json
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from security.internal_api_auth import (
     InternalApiAuthMiddleware,
@@ -252,11 +252,18 @@ class InternalApiAuthMiddlewareTests(unittest.TestCase):
         self.assertEqual(response["path"], "/health")
 
     def test_api_rejects_unsigned_request(self):
-        status, response = self.invoke(
-            "/api/echo",
-            method="POST",
-            body=BODY,
-        )
+        with patch.object(
+            self.middleware,
+            "_read_body",
+            new_callable=AsyncMock,
+        ) as read_body:
+            status, response = self.invoke(
+                "/api/echo",
+                method="POST",
+                body=BODY,
+            )
+
+        read_body.assert_not_awaited()
         self.assertEqual(status, 401)
         self.assertEqual(
             response,
