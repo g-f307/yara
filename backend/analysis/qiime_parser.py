@@ -11,13 +11,14 @@ Autor: Projeto YARA - IFAM
 
 import pandas as pd
 import numpy as np
-import zipfile
 import json
 import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import warnings
+
+from security.artifact_pipeline import secure_extract_qiime_zip
 
 warnings.filterwarnings('ignore')
 
@@ -56,20 +57,11 @@ class QIIME2Parser:
         self.temp_dir = tempfile.mkdtemp(prefix="qiime2_")
         extract_path = Path(self.temp_dir).resolve()
         
-        with zipfile.ZipFile(qzv_path, 'r') as zip_ref:
-            for member in zip_ref.infolist():
-                member_path = (extract_path / member.filename).resolve()
-                try:
-                    member_path.relative_to(extract_path)
-                except ValueError as exc:
-                    raise ValueError(
-                        f"Zip slip detectado: '{member.filename}' aponta para fora do diretório seguro."
-                    ) from exc
-
-                if member.file_size > 500 * 1024 * 1024:
-                    raise ValueError(f"Arquivo interno muito grande: {member.filename}")
-
-                zip_ref.extract(member, extract_path)
+        try:
+            secure_extract_qiime_zip(qzv_path, extract_path)
+        except Exception:
+            self.cleanup()
+            raise
         
         return extract_path
     
@@ -275,14 +267,15 @@ def load_qiime2_data(filepath: str, data_type: str = 'auto') -> Optional[pd.Data
             data_type = 'taxonomy'
     
     # Carregar conforme tipo
-    if filepath.suffix == '.qzv':
-        extract_path = parser.extract_qzv(str(filepath))
-        tsv_files = parser.find_data_files(extract_path)
-        df = None
-        if tsv_files:
-            df = pd.read_csv(tsv_files[0], sep='\t', index_col=0)
-        parser.cleanup()
-        return df
+    if filepath.suffix in {'.qzv', '.qza'}:
+        try:
+            extract_path = parser.extract_qzv(str(filepath))
+            tsv_files = parser.find_data_files(extract_path)
+            if tsv_files:
+                return pd.read_csv(tsv_files[0], sep='\t', index_col=0)
+            return None
+        finally:
+            parser.cleanup()
     else:
         if data_type == 'alpha':
             return parser.load_alpha_diversity(str(filepath))

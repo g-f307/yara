@@ -128,7 +128,13 @@ async def validate_project_data(request: ProjectValidationRequest) -> Dict[str, 
     """
     from utils.project_manager import ProjectManager
 
-    project_dir = ProjectManager.get_project_dir(request.project_id)
+    try:
+        project_dir = ProjectManager.get_project_dir(request.project_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Identificador de projeto inválido.",
+        ) from exc
     if not project_dir.exists():
         return {
             "data": {
@@ -150,18 +156,22 @@ async def validate_project_data(request: ProjectValidationRequest) -> Dict[str, 
     sample_count = 0
     files_info: List[Dict[str, Any]] = []
 
-    candidate_files = [
-        path for path in project_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in ALLOWED_EXTENSIONS
-    ]
+    candidate_files = ProjectManager._valid_files(
+        request.project_id,
+        ALLOWED_EXTENSIONS,
+    )
 
     if not candidate_files:
         errors.append("Nenhum arquivo QIIME 2 ou tabela TSV/CSV reconhecida no projeto.")
 
     for path in candidate_files:
+        display_name = ProjectManager.artifact_display_name(
+            request.project_id,
+            path.name,
+        )
         try:
             if path.stat().st_size > MAX_FILE_SIZE_BYTES:
-                warnings.append(f"{path.name}: arquivo acima do limite configurado e pode falhar no processamento.")
+                warnings.append(f"{display_name}: arquivo acima do limite configurado.")
                 continue
 
             df = _read_table_for_validation(path)
@@ -171,19 +181,21 @@ async def validate_project_data(request: ProjectValidationRequest) -> Dict[str, 
             column_names.update(str(col) for col in df.columns)
 
             if df.shape[0] < 3:
-                warnings.append(f"{path.name}: apenas {df.shape[0]} amostra(s); testes estatísticos podem não ser adequados.")
+                warnings.append(f"{display_name}: apenas {df.shape[0]} amostra(s); testes estatísticos podem não ser adequados.")
 
             if not file_types:
-                warnings.append(f"{path.name}: tabela legível, mas o tipo de análise não foi reconhecido automaticamente.")
+                warnings.append(f"{display_name}: tabela legível, mas o tipo de análise não foi reconhecido automaticamente.")
 
             files_info.append({
-                "name": path.name,
+                "name": display_name,
                 "rows": int(df.shape[0]),
                 "columns": int(df.shape[1]),
                 "detected_types": file_types,
             })
-        except Exception as exc:
-            errors.append(f"{path.name}: {exc}")
+        except Exception:
+            errors.append(
+                f"{display_name}: não foi possível validar o conteúdo do arquivo."
+            )
 
     if not detected_types and not errors:
         warnings.append("Nenhum tipo de análise reconhecido. Verifique se os arquivos foram exportados corretamente do QIIME 2.")
