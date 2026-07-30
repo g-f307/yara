@@ -146,9 +146,10 @@ O chat usa `@ai-sdk/google` no estado atual do repositório.
 ```env
 DATABASE_URL=
 STORAGE_PATH=./uploads
-MAX_FILE_SIZE_BYTES=524288000
+MAX_FILE_SIZE_BYTES=134217728
 ENVIRONMENT=development
 YARA_INTERNAL_API_SECRET=
+ALLOWED_STORAGE_HOSTS=utfs.io,ufs.sh,*.ufs.sh
 ```
 
 `YARA_INTERNAL_API_SECRET` autentica chamadas internas entre Next.js e FastAPI.
@@ -164,6 +165,39 @@ O backend exige assinatura HMAC em todas as rotas `/api/*`. A rota `/health`
 permanece pública para health checks. A documentação `/docs`, o schema
 `/openapi.json` e `/redoc` permanecem públicos nesta fase, mas as operações
 protegidas exibidas por eles continuam exigindo assinatura válida.
+
+### Sincronização segura de artefatos
+
+Arquivos recebidos pelo object storage são tratados como não confiáveis. O
+FastAPI:
+
+- restringe destinos a `ALLOWED_STORAGE_HOSTS`;
+- resolve e rejeita endereços locais, privados, link-local e reservados em IPv4/IPv6;
+- revalida cada redirecionamento e limita sua quantidade;
+- baixa em streaming para quarentena e interrompe no limite configurado;
+- calcula SHA-256 durante o recebimento;
+- valida nome, extensão, MIME, magic bytes e estrutura mínima;
+- inspeciona QZA/QZV contra ZIP Slip, symlinks e expansão excessiva;
+- promove atomicamente somente artefatos `VALID`, usando nome físico UUID;
+- persiste nome original, hash, tamanho e estado em `.artifacts.json`.
+
+Os estados do pipeline são `QUARANTINED`, `VALIDATING`, `VALID`, `REJECTED` e
+`FAILED`. Somente registros `VALID` são visíveis para as análises. Arquivos
+temporários são removidos em rejeições e falhas.
+
+```env
+ALLOWED_STORAGE_HOSTS=utfs.io,ufs.sh,*.ufs.sh
+MAX_FILE_SIZE_BYTES=134217728
+MAX_DOWNLOAD_REDIRECTS=3
+DOWNLOAD_CONNECT_TIMEOUT_SECONDS=5
+DOWNLOAD_READ_TIMEOUT_SECONDS=30
+MAX_ZIP_ENTRIES=2000
+MAX_ZIP_UNCOMPRESSED_BYTES=536870912
+MAX_ZIP_COMPRESSION_RATIO=100
+```
+
+Em produção, somente HTTPS é aceito. Em desenvolvimento, HTTP continua sujeito
+à allowlist e endereços não globais permanecem bloqueados.
 
 ## Execução Local
 

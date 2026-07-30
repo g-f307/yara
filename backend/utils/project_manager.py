@@ -1,112 +1,227 @@
+"""Gerenciamento seguro do cache de artefatos por projeto."""
+
+from __future__ import annotations
+
+import asyncio
 import os
-import httpx
-from typing import List, Dict
-import aiofiles
+from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
+
+import httpx
+
+from security.artifact_pipeline import (
+    ArtifactSecurityError,
+    ArtifactStore,
+    normalize_project_id,
+    safe_project_dir,
+)
 
 CACHE_DIR = os.getenv("STORAGE_PATH", "./uploads")
+_PROJECT_LOCKS: dict[str, tuple[asyncio.Lock, int]] = {}
+_PROJECT_LOCKS_GUARD = asyncio.Lock()
+
+
+@asynccontextmanager
+async def _project_lock(project_id: str):
+    async with _PROJECT_LOCKS_GUARD:
+        lock, references = _PROJECT_LOCKS.get(
+            project_id,
+            (asyncio.Lock(), 0),
+        )
+        _PROJECT_LOCKS[project_id] = (lock, references + 1)
+    try:
+        async with lock:
+            yield
+    finally:
+        async with _PROJECT_LOCKS_GUARD:
+            current_lock, references = _PROJECT_LOCKS[project_id]
+            if references == 1:
+                del _PROJECT_LOCKS[project_id]
+            else:
+                _PROJECT_LOCKS[project_id] = (
+                    current_lock,
+                    references - 1,
+                )
+
 
 class ProjectManager:
     @staticmethod
-    async def sync_files(project_id: str, files: List[Dict[str, str]]):
-        """
-        Downloads files from URLs and caches them locally by project_id.
-        """
-        project_dir = Path(CACHE_DIR) / project_id
-        project_dir.mkdir(parents=True, exist_ok=True)
-        
-        results = []
-        async with httpx.AsyncClient() as client:
-            print(f"Syncing {len(files)} files for project {project_id}")
-            for f in files:
-                url = f.get("url")
-                name = f.get("name")
-                if not url or not name:
-                    results.append({"name": name, "status": "skipped", "reason": "Missing URL or Name"})
-                    continue
-                    
-                file_path = project_dir / str(name)
-                if file_path.exists():
-                    results.append({"name": name, "status": "skipped", "reason": "Already downloaded"})
-                    continue # Skip if already downloaded
-                
-                try:
-                    print(f"Downloading {name} from {url}...")
-                    response = await client.get(url, follow_redirects=True)
-                    response.raise_for_status()
-                    async with aiofiles.open(file_path, 'wb') as out_file:
-                        await out_file.write(response.content)
-                    print(f"Downloaded {name} successfully.")
-                    results.append({"name": name, "status": "downloaded"})
-                except Exception as e:
-                    print(f"Failed to download {name} from {url}: {e}")
-                    results.append({"name": name, "status": "failed", "reason": str(e)})
-                    
-        return {"status": "success", "synced_files": [f["name"] for f in files], "details": results}
+    async def sync_files(
+        project_id: str,
+        files: list[dict[str, str]],
+    ) -> dict[str, Any]:
+        """Baixa, valida e promove artefatos individualmente."""
+        normalized_project_id = normalize_project_id(project_id)
+        store = ArtifactStore(CACHE_DIR)
+        timeout = httpx.Timeout(
+            connect=store.limits.connect_timeout_seconds,
+            read=store.limits.read_timeout_seconds,
+            write=store.limits.read_timeout_seconds,
+            pool=store.limits.connect_timeout_seconds,
+        )
+        results: list[dict[str, Any]] = []
+
+        async with _project_lock(normalized_project_id):
+            async with httpx.AsyncClient(
+                timeout=timeout,
+                follow_redirects=False,
+                trust_env=False,
+            ) as client:
+                for file_data in files:
+                    name = file_data.get("name") or ""
+                    url = file_data.get("url") or ""
+                    if not name or not url:
+                        results.append(
+                            {
+                                "name": name,
+                                "status": "REJECTED",
+                                "code": "MISSING_FILE_DATA",
+                                "reason": "Nome e URL do arquivo são obrigatórios.",
+                            }
+                        )
+                        continue
+                    try:
+                        record = await store.sync_one(
+                            client,
+                            normalized_project_id,
+                            url,
+                            name,
+                        )
+                        results.append(
+                            {
+                                "name": record.original_name,
+                                "status": record.status,
+                                "sha256": record.sha256,
+                                "size": record.size,
+                            }
+                        )
+                    except ArtifactSecurityError as exc:
+                        results.append(
+                            {
+                                "name": name,
+                                "status": "REJECTED",
+                                "code": exc.code,
+                                "reason": exc.public_message,
+                            }
+                        )
+                    except (httpx.HTTPError, OSError):
+                        results.append(
+                            {
+                                "name": name,
+                                "status": "FAILED",
+                                "code": "ARTIFACT_SYNC_FAILED",
+                                "reason": "Não foi possível sincronizar o arquivo.",
+                            }
+                        )
+
+        valid_count = sum(result["status"] == "VALID" for result in results)
+        return {
+            "status": "success" if valid_count == len(results) else "partial",
+            "valid_files": valid_count,
+            "details": results,
+        }
 
     @staticmethod
     def get_project_dir(project_id: str) -> Path:
-        return Path(CACHE_DIR) / project_id
+        return safe_project_dir(CACHE_DIR, project_id)
+
+    @staticmethod
+    def _valid_files(project_id: str, extensions: set[str]) -> list[Path]:
+        project_dir = ProjectManager.get_project_dir(project_id)
+        if not project_dir.exists():
+            return []
+        records = ArtifactStore(CACHE_DIR).valid_records(project_id)
+        return [
+            project_dir / record.physical_name
+            for record in records
+            if record.extension in extensions
+            and (project_dir / record.physical_name).is_file()
+        ]
+
+    @staticmethod
+    def has_valid_artifacts(project_id: str) -> bool:
+        return bool(
+            ProjectManager._valid_files(
+                project_id,
+                {".tsv", ".csv", ".qza", ".qzv", ".biom"},
+            )
+        )
+
+    @staticmethod
+    def artifact_display_name(project_id: str, physical_name: str) -> str:
+        for record in ArtifactStore(CACHE_DIR).valid_records(project_id):
+            if record.physical_name == physical_name:
+                return record.original_name
+        return "artefato"
 
     @staticmethod
     def get_project_data(project_id: str, data_type: str):
         from analysis.qiime_parser import load_qiime2_data
-        
-        project_dir = ProjectManager.get_project_dir(project_id)
-        if not project_dir.exists():
-            raise FileNotFoundError(f"Arquivos do projeto {project_id} não sincronizados no Python Core.")
-            
-        files = [f for f in project_dir.iterdir() if f.is_file() and f.suffix in ['.tsv', '.qzv']]
-        
-        # Helper to guess file type by content
-        def is_likely_type(df, dt: str) -> bool:
-            if df is None or df.empty: return False
-            lower_cols = [str(c).lower() for c in df.columns]
-            if dt == 'alpha':
-                return any(c in ['shannon', 'observed_features', 'faith_pd', 'chao1', 'pielou_e', 'simpson'] for c in lower_cols)
-            elif dt == 'beta':
-                # Beta diversity distance matrices are square (nxn)
+
+        files = ProjectManager._valid_files(project_id, {".tsv", ".qzv", ".qza"})
+        if not files:
+            raise FileNotFoundError(
+                "Os arquivos válidos do projeto ainda não foram sincronizados."
+            )
+
+        def is_likely_type(df, requested_type: str) -> bool:
+            if df is None or df.empty:
+                return False
+            lower_cols = [str(column).lower() for column in df.columns]
+            if requested_type == "alpha":
+                return any(
+                    column
+                    in {
+                        "shannon",
+                        "observed_features",
+                        "faith_pd",
+                        "chao1",
+                        "pielou_e",
+                        "simpson",
+                    }
+                    for column in lower_cols
+                )
+            if requested_type == "beta":
                 return df.shape[0] == df.shape[1] and df.shape[0] > 1
-            elif dt == 'taxonomy':
-                return any('taxon' in c for c in lower_cols) or any('taxa' in c for c in lower_cols)
-            elif dt == 'rarefaction':
-                # Typically has numeric column names representing sampling depths
-                return any(c.isdigit() for c in lower_cols)
+            if requested_type == "taxonomy":
+                return any("taxon" in column or "taxa" in column for column in lower_cols)
+            if requested_type == "rarefaction":
+                return any(column.isdigit() for column in lower_cols)
             return True
 
-        # First, we load all TSVs and check their content
-        for f in files:
+        for file_path in files:
             try:
-                # read blindly as a standard TSV
-                import pandas as pd
-                temp_df = pd.read_csv(f, sep='\t', index_col=0, comment='#')
-                if is_likely_type(temp_df, data_type):
-                    df = load_qiime2_data(str(f), data_type=data_type)
-                    if df is not None and not df.empty:
-                        return df
-            except Exception as e:
-                pass
-                
-        raise ValueError(f"Não foram encontrados dados válidos para a análise de {data_type} nos arquivos do projeto {project_id}.")
+                dataframe = load_qiime2_data(str(file_path), data_type=data_type)
+                if is_likely_type(dataframe, data_type):
+                    return dataframe
+            except (ValueError, OSError):
+                continue
+
+        raise ValueError(
+            f"Não foram encontrados dados válidos para a análise de {data_type}."
+        )
 
     @staticmethod
     def get_project_metadata(project_id: str):
         import pandas as pd
-        project_dir = ProjectManager.get_project_dir(project_id)
-        if not project_dir.exists():
-            return None
-            
-        files = [f for f in project_dir.iterdir() if f.is_file() and f.suffix in ['.tsv', '.txt']]
-        target_files = sorted(files, key=lambda f: 'metadata' not in f.name.lower())
-        
-        for f in target_files:
+
+        files = ProjectManager._valid_files(project_id, {".tsv"})
+        for file_path in files:
             try:
-                df = pd.read_csv(f, sep='\t')
-                # Try to identify sample ID column
-                sample_col = next((c for c in df.columns if c.lower() in ['sample-id', 'sampleid', 'id', '#sampleid']), None)
-                if sample_col:
-                    df = df.set_index(sample_col)
-                return df
-            except:
-                pass
+                dataframe = pd.read_csv(file_path, sep="\t")
+                sample_column = next(
+                    (
+                        column
+                        for column in dataframe.columns
+                        if column.lower()
+                        in {"sample-id", "sampleid", "id", "#sampleid"}
+                    ),
+                    None,
+                )
+                if sample_column:
+                    dataframe = dataframe.set_index(sample_column)
+                return dataframe
+            except (ValueError, OSError):
+                continue
         return None

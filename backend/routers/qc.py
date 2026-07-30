@@ -5,10 +5,12 @@ Quality Control Router
 POST /api/qc/summary — Diagnóstico de profundidade de sequenciamento por amostra
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Dict, Any, Optional
 import pandas as pd
+
+from security.artifact_pipeline import ArtifactSecurityError
 
 router = APIRouter(prefix="/api/qc", tags=["qc"])
 
@@ -37,9 +39,13 @@ async def qc_summary(request: QCRequest) -> Dict[str, Any]:
     """
     from utils.project_manager import ProjectManager
 
-    project_dir = ProjectManager.get_project_dir(request.project_id)
-    if not project_dir.exists():
-        return {"error": "Arquivos do projeto ainda não sincronizados.", "plotly_spec": None}
+    try:
+        valid_tables = ProjectManager._valid_files(
+            request.project_id,
+            {".tsv"},
+        )
+    except ArtifactSecurityError as exc:
+        raise HTTPException(status_code=400, detail=exc.public_message) from exc
 
     read_candidates = [
         "forward sequence count",
@@ -55,10 +61,7 @@ async def qc_summary(request: QCRequest) -> Dict[str, Any]:
     sample_col = None
     reads_col = None
 
-    for file_path in sorted(project_dir.glob("*")):
-        if not file_path.is_file() or file_path.suffix.lower() not in {".tsv", ".txt"}:
-            continue
-
+    for file_path in sorted(valid_tables):
         try:
             df = pd.read_csv(file_path, sep="\t", comment="#")
         except Exception:

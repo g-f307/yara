@@ -156,12 +156,18 @@ async function ensureBackendSynched(projectId: string) {
     }
 
     if (project.files.length > 0) {
-        await syncProjectFiles(project.id, project.files.map((f: any) => ({
+        const syncResult: any = await syncProjectFiles(project.id, project.files.map((f: any) => ({
             id: f.id,
             name: f.name,
             type: f.type,
             url: f.url
         })));
+        if (syncResult.valid_files === 0) {
+            throw new Error(
+                syncResult.details?.[0]?.reason
+                || "Nenhum arquivo enviado passou pela validação de segurança."
+            );
+        }
     }
 
     return project;

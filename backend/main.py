@@ -18,11 +18,13 @@ from security.internal_api_auth import (
     InternalApiAuthMiddleware,
     validate_internal_api_configuration,
 )
+from security.artifact_pipeline import validate_artifact_configuration
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     validate_internal_api_configuration()
+    validate_artifact_configuration()
     yield
 
 app = FastAPI(
