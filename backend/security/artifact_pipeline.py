@@ -8,10 +8,12 @@ import hashlib
 import ipaddress
 import json
 import os
+import queue
 import shutil
 import socket
 import stat
 import tempfile
+import threading
 import uuid
 import zipfile
 from dataclasses import asdict, dataclass
@@ -402,7 +404,37 @@ async def _stream_response_to_file(
 ) -> tuple[int, str]:
     received = 0
     digest = hashlib.sha256()
-    with destination.open("wb") as output:
+    chunks: queue.Queue[bytes | None] = queue.Queue(maxsize=4)
+    writer_done = threading.Event()
+    writer_errors: list[OSError] = []
+
+    def write_chunks() -> None:
+        try:
+            with destination.open("wb") as output:
+                while (chunk := chunks.get()) is not None:
+                    output.write(chunk)
+        except OSError as exc:
+            writer_errors.append(exc)
+        finally:
+            writer_done.set()
+
+    async def enqueue(chunk: bytes | None) -> None:
+        while not writer_done.is_set():
+            try:
+                chunks.put_nowait(chunk)
+                return
+            except queue.Full:
+                await asyncio.sleep(0)
+        if writer_errors:
+            raise writer_errors[0]
+
+    writer = threading.Thread(
+        target=write_chunks,
+        name="yara-artifact-writer",
+        daemon=True,
+    )
+    writer.start()
+    try:
         async for chunk in response.aiter_bytes(64 * 1024):
             received += len(chunk)
             if received > max_bytes:
@@ -411,7 +443,14 @@ async def _stream_response_to_file(
                     "O arquivo excede o limite máximo permitido.",
                 )
             digest.update(chunk)
-            output.write(chunk)
+            await enqueue(chunk)
+    finally:
+        await enqueue(None)
+        while not writer_done.is_set():
+            await asyncio.sleep(0)
+        writer.join()
+    if writer_errors:
+        raise writer_errors[0]
     return received, digest.hexdigest()
 
 
@@ -577,6 +616,7 @@ class ArtifactStore:
         project_dir.mkdir(parents=True, exist_ok=True)
         quarantine_dir = project_dir / ".quarantine"
         quarantine_dir.mkdir(mode=0o700, exist_ok=True)
+        quarantine_dir.chmod(0o700)
         original_name, extension = validate_original_name(original_name)
         artifact_id = str(uuid.uuid4())
         temporary_path: Path | None = None

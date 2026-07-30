@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -28,7 +29,7 @@ from security.artifact_pipeline import (
     validate_original_name,
     validate_remote_url,
 )
-from utils.project_manager import ProjectManager
+from utils.project_manager import ProjectManager, _PROJECT_LOCKS, _project_lock
 
 
 def limits(**overrides) -> ArtifactLimits:
@@ -250,6 +251,23 @@ class ArtifactContentTests(unittest.TestCase):
 
 
 class ArtifactDownloadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_existing_quarantine_permissions_are_hardened(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project_id = str(uuid.uuid4())
+            quarantine = Path(temporary) / project_id / ".quarantine"
+            quarantine.mkdir(parents=True)
+            quarantine.chmod(0o777)
+            store = ArtifactStore(temporary)
+            async with httpx.AsyncClient() as client:
+                with self.assertRaises(ArtifactSecurityError):
+                    await store.sync_one(
+                        client,
+                        project_id,
+                        "https://files.example/data.tsv",
+                        "../unsafe.tsv",
+                    )
+            self.assertEqual(stat.S_IMODE(quarantine.stat().st_mode), 0o700)
+
     async def test_streaming_download_stops_at_limit(self):
         payload = b"x" * 2048
 
@@ -366,6 +384,40 @@ class ArtifactAnalysisVisibilityTests(unittest.TestCase):
                     ProjectManager._valid_files(project_id, {".tsv"}),
                     [],
                 )
+
+
+class ProjectLockRegistryTests(unittest.IsolatedAsyncioTestCase):
+    async def test_project_lock_is_removed_after_last_reference(self):
+        project_id = str(uuid.uuid4())
+        async with _project_lock(project_id):
+            self.assertIn(project_id, _PROJECT_LOCKS)
+        self.assertNotIn(project_id, _PROJECT_LOCKS)
+
+    async def test_waiters_share_one_lock_without_early_eviction(self):
+        project_id = str(uuid.uuid4())
+        first_entered = asyncio.Event()
+        release_first = asyncio.Event()
+        second_entered = asyncio.Event()
+
+        async def first():
+            async with _project_lock(project_id):
+                first_entered.set()
+                await release_first.wait()
+
+        async def second():
+            await first_entered.wait()
+            async with _project_lock(project_id):
+                second_entered.set()
+
+        first_task = asyncio.create_task(first())
+        second_task = asyncio.create_task(second())
+        await first_entered.wait()
+        await asyncio.sleep(0)
+        self.assertFalse(second_entered.is_set())
+        self.assertEqual(_PROJECT_LOCKS[project_id][1], 2)
+        release_first.set()
+        await asyncio.gather(first_task, second_task)
+        self.assertNotIn(project_id, _PROJECT_LOCKS)
 
 
 if __name__ == "__main__":

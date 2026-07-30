@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from analysis.qiime_parser import QIIME2Parser, load_qiime2_data
+from security.artifact_pipeline import ArtifactSecurityError
 
 router = APIRouter(prefix="/api/parse", tags=["parse"])
 
@@ -130,7 +131,7 @@ async def validate_project_data(request: ProjectValidationRequest) -> Dict[str, 
 
     try:
         project_dir = ProjectManager.get_project_dir(request.project_id)
-    except ValueError as exc:
+    except ArtifactSecurityError as exc:
         raise HTTPException(
             status_code=400,
             detail="Identificador de projeto inválido.",

@@ -28,10 +28,9 @@ async def project_status(project_id: str) -> Dict[str, Any]:
     avoiding redundant redundant file syncs from node.js backend.
     """
     try:
-        project_dir = ProjectManager.get_project_dir(project_id)
+        return {"synced": ProjectManager.has_valid_artifacts(project_id)}
     except ArtifactSecurityError as exc:
         raise HTTPException(status_code=400, detail=exc.public_message) from exc
-    return {"synced": ProjectManager.has_valid_artifacts(project_id)}
 
 @router.post("/use-demo")
 async def use_demo_data(request: SyncRequest) -> Dict[str, Any]:

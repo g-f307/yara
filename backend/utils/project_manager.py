@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,31 @@ from security.artifact_pipeline import (
 )
 
 CACHE_DIR = os.getenv("STORAGE_PATH", "./uploads")
-_PROJECT_LOCKS: dict[str, asyncio.Lock] = {}
+_PROJECT_LOCKS: dict[str, tuple[asyncio.Lock, int]] = {}
+_PROJECT_LOCKS_GUARD = asyncio.Lock()
+
+
+@asynccontextmanager
+async def _project_lock(project_id: str):
+    async with _PROJECT_LOCKS_GUARD:
+        lock, references = _PROJECT_LOCKS.get(
+            project_id,
+            (asyncio.Lock(), 0),
+        )
+        _PROJECT_LOCKS[project_id] = (lock, references + 1)
+    try:
+        async with lock:
+            yield
+    finally:
+        async with _PROJECT_LOCKS_GUARD:
+            current_lock, references = _PROJECT_LOCKS[project_id]
+            if references == 1:
+                del _PROJECT_LOCKS[project_id]
+            else:
+                _PROJECT_LOCKS[project_id] = (
+                    current_lock,
+                    references - 1,
+                )
 
 
 class ProjectManager:
@@ -37,8 +62,7 @@ class ProjectManager:
         )
         results: list[dict[str, Any]] = []
 
-        project_lock = _PROJECT_LOCKS.setdefault(normalized_project_id, asyncio.Lock())
-        async with project_lock:
+        async with _project_lock(normalized_project_id):
             async with httpx.AsyncClient(
                 timeout=timeout,
                 follow_redirects=False,
