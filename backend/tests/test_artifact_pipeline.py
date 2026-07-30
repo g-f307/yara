@@ -29,6 +29,7 @@ from security.artifact_pipeline import (
     validate_original_name,
     validate_remote_url,
 )
+from routers.qc import QCRequest, qc_summary
 from utils.project_manager import ProjectManager, _PROJECT_LOCKS, _project_lock
 
 
@@ -384,6 +385,40 @@ class ArtifactAnalysisVisibilityTests(unittest.TestCase):
                     ProjectManager._valid_files(project_id, {".tsv"}),
                     [],
                 )
+
+
+class QCArtifactVisibilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_qc_ignores_unregistered_table(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project_id = str(uuid.uuid4())
+            project_dir = Path(temporary) / project_id
+            project_dir.mkdir()
+            (project_dir / "untrusted.tsv").write_text(
+                "sample-id\treads\ns1\t1000\n",
+                encoding="utf-8",
+            )
+            with patch("utils.project_manager.CACHE_DIR", temporary):
+                response = await qc_summary(QCRequest(project_id=project_id))
+            self.assertIn("error", response)
+            self.assertNotIn("data", response)
+
+    async def test_qc_uses_registered_valid_table(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project_id = str(uuid.uuid4())
+            source = Path(temporary) / "qc.tsv"
+            source.write_text(
+                "sample-id\treads\ns1\t1000\ns2\t2000\n",
+                encoding="utf-8",
+            )
+            ArtifactStore(temporary).import_local_validated(
+                project_id,
+                source,
+                source.name,
+            )
+            with patch("utils.project_manager.CACHE_DIR", temporary):
+                response = await qc_summary(QCRequest(project_id=project_id))
+            self.assertEqual(response["data"]["total_samples"], 2)
+            self.assertEqual(response["data"]["total_reads"], 3000)
 
 
 class ProjectLockRegistryTests(unittest.IsolatedAsyncioTestCase):

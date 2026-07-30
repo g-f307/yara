@@ -206,7 +206,7 @@ class ProjectManager:
     def get_project_metadata(project_id: str):
         import pandas as pd
 
-        files = ProjectManager._valid_files(project_id, {".tsv", ".txt"})
+        files = ProjectManager._valid_files(project_id, {".tsv"})
         for file_path in files:
             try:
                 dataframe = pd.read_csv(file_path, sep="\t")
