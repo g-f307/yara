@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint .",
-    "test": "node lib/authorization-policy.test.cjs"
+    "test": "node lib/authorization-policy.test.cjs && node lib/internal-api-auth-core.test.cjs"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.34",

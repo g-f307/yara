@@ -9,6 +9,7 @@ import {
     requireOwnedProjectWithFiles,
     requireProjectFile,
 } from "@/lib/authorization";
+import { internalApiFetch } from "@/lib/internal-api-auth";
 
 export async function getUserProjects() {
     try {
@@ -142,7 +143,10 @@ async function ensureBackendSynched(projectId: string) {
 
     // Ownership must be proven before disclosing backend state or triggering sync.
     try {
-        const check = await fetch(`${pythonCoreUrl}/api/project/status/${project.id}`, { cache: 'no-store' });
+        const check = await internalApiFetch(
+            `${pythonCoreUrl}/api/project/status/${project.id}`,
+            { cache: "no-store" },
+        );
         if (check.ok) {
             const { synced } = await check.json();
             if (synced) return project;

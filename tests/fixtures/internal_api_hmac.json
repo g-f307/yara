@@ -1,0 +1,9 @@
+{
+  "secret": "test-only-secret-do-not-use-in-production",
+  "method": "POST",
+  "path_with_query": "/api/alpha/analyze?mode=full",
+  "timestamp": 1700000000,
+  "body": "{\"project_id\":\"project-123\",\"metric\":\"shannon\"}",
+  "body_sha256": "9a88d377a864f63a9505477430bae49be9199cbe4dfd0c2474ffa6639f9866b1",
+  "signature": "ca67ed09c23fa6efad9f3d8609e358afe5edec958d204b3e6af8d8e74f976c69"
+}

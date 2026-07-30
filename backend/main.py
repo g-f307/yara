@@ -8,16 +8,32 @@ Expõe endpoints REST para o frontend Next.js.
 Autor: Projeto YARA - IFAM
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers import parse, alpha, beta, taxonomy, rarefaction, statistics, reports, project, qc
+from security.internal_api_auth import (
+    InternalApiAuthMiddleware,
+    validate_internal_api_configuration,
+)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    validate_internal_api_configuration()
+    yield
 
 app = FastAPI(
     title="YARA Python Core",
     description="Serviço de análise metagenômica para dados QIIME 2",
     version="1.0.0",
+    lifespan=lifespan,
 )
+
+# Autenticação interna é adicionada antes do CORS para proteger toda rota /api.
+app.add_middleware(InternalApiAuthMiddleware)
 
 # CORS — permitir chamadas do frontend Next.js
 app.add_middleware(
