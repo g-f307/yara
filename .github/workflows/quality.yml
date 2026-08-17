@@ -1,0 +1,129 @@
+name: Quality
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-quality:
+    name: frontend-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      DATABASE_URL: postgresql://yara:yara@localhost:5432/yara?schema=public
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5hY2NvdW50cy5kZXYk
+      CLERK_SECRET_KEY: sk_test_ci-only-placeholder
+      PYTHON_CORE_URL: http://localhost:8000
+      YARA_INTERNAL_API_SECRET: ci-only-secret-with-at-least-32-chars
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependências em ambiente limpo
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Testes unitários
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build de produção
+        run: npm run build
+
+      - name: Verificar whitespace do conjunto de mudanças
+        working-directory: .
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.sha }}"
+          else
+            git show --check --format=oneline "${{ github.sha }}"
+          fi
+
+  backend-quality:
+    name: backend-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ENVIRONMENT: testing
+      ALLOWED_STORAGE_HOSTS: utfs.io
+      YARA_INTERNAL_API_SECRET: ci-only-secret-with-at-least-32-chars
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Instalar dependências de teste
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Testes de unidade e contratos
+        run: python -m pytest -m "not golden"
+
+      - name: Compilar e importar módulos Python
+        run: |
+          python -m compileall -q .
+          python -c "import main; import analysis.alpha_diversity; import security.artifact_pipeline"
+
+  scientific-golden:
+    name: scientific-golden
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      ENVIRONMENT: testing
+      ALLOWED_STORAGE_HOSTS: utfs.io
+      YARA_INTERNAL_API_SECRET: ci-only-secret-with-at-least-32-chars
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Instalar dependências científicas
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Validar datasets golden
+        run: python -m pytest -m golden
