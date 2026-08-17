@@ -1,0 +1,36 @@
+{
+  "alpha": {
+    "mean": 2.5,
+    "median": 2.5,
+    "std": 1.2909944487358056,
+    "q25": 1.75,
+    "q75": 3.25
+  },
+  "beta": {
+    "mean": 0.225,
+    "median": 0.225,
+    "std": 0.08539125638299665,
+    "min": 0.1,
+    "max": 0.35
+  },
+  "taxonomy": {
+    "Firmicutes": 2,
+    "Proteobacteria": 1,
+    "Unassigned": 1
+  },
+  "rarefaction": {
+    "sample_a_plateau": 1000,
+    "sample_a_saturation": 0.8421052631578947,
+    "recommended_depth": 1000
+  },
+  "qc": {
+    "total_samples": 4,
+    "total_reads": 10000,
+    "mean_reads_per_sample": 2500.0
+  },
+  "statistics": {
+    "statistic": 6.818181818181813,
+    "p_value": 0.009023438818080334,
+    "significant": true
+  }
+}
