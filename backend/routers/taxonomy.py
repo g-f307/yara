@@ -13,6 +13,7 @@ from collections import Counter
 import pandas as pd
 
 from analysis.qiime_parser import QIIME2Parser
+from observability import ApiError
 
 router = APIRouter(prefix="/api/taxonomy", tags=["taxonomy"])
 
@@ -56,8 +57,8 @@ async def taxonomy_summary(request: TaxonomyRequest) -> Dict[str, Any]:
 
     try:
         df = ProjectManager.get_project_data(request.project_id, 'taxonomy')
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
     try:
         # QIIME2 QZV taxa-bar-plots.qzv CSVs have an 'index' column of samples, and Taxon columns.
@@ -103,10 +104,7 @@ async def taxonomy_summary(request: TaxonomyRequest) -> Dict[str, Any]:
                     "data": {"total_features": len(taxa), "top_taxa": summary},
                     "plotly_spec": plotly_spec,
                 }
-            return {
-                "error": "Tabela de taxonomia não possui coluna 'Taxon' e não é um CSV de taxonomia.",
-                "plotly_spec": None,
-            }
+            raise ApiError("ANALYSIS_FAILED", 422)
 
         taxa = [_extract_taxa_at_level(t, request.level) for t in df['Taxon']]
         counts = Counter(taxa)
@@ -140,8 +138,10 @@ async def taxonomy_summary(request: TaxonomyRequest) -> Dict[str, Any]:
             },
             "plotly_spec": plotly_spec,
         }
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except ApiError:
+        raise
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
 
 class BarplotRequest(BaseModel):
@@ -160,15 +160,15 @@ async def taxonomy_barplot(request: BarplotRequest) -> Dict[str, Any]:
 
     try:
         df = ProjectManager.get_project_data(request.project_id, 'taxonomy')
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
     try:
         # Se exportado diretamente de taxa-bar-plots.qzv CSV, as colunas já são as taxas formatadas
         if 'Taxon' not in df.columns:
             numeric_df = df.select_dtypes(include='number')
             if numeric_df.empty:
-                return {"error": "Colunas de abundância não encontradas.", "plotly_spec": None}
+                raise ApiError("ANALYSIS_FAILED", 422)
                 
             taxa_sums = numeric_df.sum().sort_values(ascending=False)
             top_taxa_names = taxa_sums.head(request.top_n).index.tolist()
@@ -211,10 +211,7 @@ async def taxonomy_barplot(request: BarplotRequest) -> Dict[str, Any]:
         abundance_cols = [c for c in df.columns if c not in ['Taxon', 'parsed_taxon', 'Feature ID', 'Confidence', 'Taxonomy_Parsed']]
 
         if not abundance_cols:
-            return {
-                "error": "Colunas de abundância não encontradas.",
-                "plotly_spec": None,
-            }
+            raise ApiError("ANALYSIS_FAILED", 422)
 
         # Agrupar por táxon e somar abundâncias
         top_taxa_names = df['parsed_taxon'].value_counts().head(request.top_n).index.tolist()
@@ -249,5 +246,7 @@ async def taxonomy_barplot(request: BarplotRequest) -> Dict[str, Any]:
             },
             "plotly_spec": plotly_spec,
         }
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except ApiError:
+        raise
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc

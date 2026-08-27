@@ -7,8 +7,9 @@ import hmac
 import os
 import time
 
-from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from observability import error_response
 
 TIMESTAMP_HEADER = b"x-yara-timestamp"
 SIGNATURE_HEADER = b"x-yara-signature"
@@ -129,6 +130,7 @@ class InternalApiAuthMiddleware:
                 receive,
                 send,
                 status_code=503,
+                code="BACKEND_UNAVAILABLE",
                 message="Serviço interno não configurado.",
             )
             return
@@ -142,6 +144,7 @@ class InternalApiAuthMiddleware:
                 receive,
                 send,
                 status_code=401,
+                code="AUTH_REQUIRED",
                 message="Requisição não autorizada.",
             )
             return
@@ -161,6 +164,7 @@ class InternalApiAuthMiddleware:
                 receive,
                 send,
                 status_code=401,
+                code="AUTH_REQUIRED",
                 message="Requisição não autorizada.",
             )
             return
@@ -215,10 +219,8 @@ class InternalApiAuthMiddleware:
         send: Send,
         *,
         status_code: int,
+        code: str,
         message: str,
     ) -> None:
-        response = JSONResponse(
-            {"detail": message},
-            status_code=status_code,
-        )
+        response = error_response(scope, code, status_code, message)
         await response(scope, receive, send)

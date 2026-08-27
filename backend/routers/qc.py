@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 import pandas as pd
 
 from security.artifact_pipeline import ArtifactSecurityError
+from observability import ApiError
 
 router = APIRouter(prefix="/api/qc", tags=["qc"])
 
@@ -102,10 +103,7 @@ async def qc_summary(request: QCRequest) -> Dict[str, Any]:
             df = pd.DataFrame(inferred_rows)
             source = "Inferido das curvas de rarefação"
         except Exception:
-            return {
-                "error": "Nenhum arquivo de QC com contagem de reads por amostra foi encontrado.",
-                "plotly_spec": None,
-            }
+            raise ApiError("ANALYSIS_FAILED", 422)
     else:
         df = qc_df.rename(columns={reads_col: "reads"})
         if sample_col:
@@ -116,7 +114,7 @@ async def qc_summary(request: QCRequest) -> Dict[str, Any]:
     df["reads"] = pd.to_numeric(df["reads"], errors="coerce")
     df = df.dropna(subset=["reads"])
     if df.empty:
-        return {"error": "A coluna de reads encontrada não possui valores numéricos válidos.", "plotly_spec": None}
+        raise ApiError("ANALYSIS_FAILED", 422)
 
     mean_reads = float(df["reads"].mean())
     std_reads = float(df["reads"].std()) if len(df) > 1 else 0.0

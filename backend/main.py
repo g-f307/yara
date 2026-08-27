@@ -19,6 +19,7 @@ from security.internal_api_auth import (
     validate_internal_api_configuration,
 )
 from security.artifact_pipeline import validate_artifact_configuration
+from observability import ObservabilityMiddleware, install_exception_handlers
 
 
 @asynccontextmanager
@@ -34,6 +35,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+install_exception_handlers(app)
+
 # Autenticação interna é adicionada antes do CORS para proteger toda rota /api.
 app.add_middleware(InternalApiAuthMiddleware)
 
@@ -45,6 +48,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Último middleware adicionado é o mais externo no Starlette.
+app.add_middleware(ObservabilityMiddleware)
 
 # Registrar routers
 app.include_router(parse.router)

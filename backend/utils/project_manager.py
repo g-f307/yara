@@ -16,6 +16,7 @@ from security.artifact_pipeline import (
     normalize_project_id,
     safe_project_dir,
 )
+from observability import record_failure
 
 CACHE_DIR = os.getenv("STORAGE_PATH", "./uploads")
 _PROJECT_LOCKS: dict[str, tuple[asyncio.Lock, int]] = {}
@@ -97,6 +98,7 @@ class ProjectManager:
                             }
                         )
                     except ArtifactSecurityError as exc:
+                        record_failure(exc.code)
                         results.append(
                             {
                                 "name": name,
@@ -106,11 +108,12 @@ class ProjectManager:
                             }
                         )
                     except (httpx.HTTPError, OSError):
+                        record_failure("SYNC_FAILED")
                         results.append(
                             {
                                 "name": name,
                                 "status": "FAILED",
-                                "code": "ARTIFACT_SYNC_FAILED",
+                                "code": "SYNC_FAILED",
                                 "reason": "Não foi possível sincronizar o arquivo.",
                             }
                         )

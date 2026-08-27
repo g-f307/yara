@@ -15,6 +15,7 @@ from datetime import datetime
 import tempfile
 
 from analysis.report_generator import ReportGenerator
+from observability import ApiError
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -89,5 +90,5 @@ async def generate_docx(request: ReportRequest) -> Dict[str, Any]:
 async def download_report(filename: str):
     file_path = UPLOADS_DIR / filename
     if not file_path.exists():
-        return {"error": "Arquivo não encontrado", "status": 404}
+        raise ApiError("RESOURCE_NOT_FOUND", 404)
     return FileResponse(path=file_path, filename=filename, media_type='application/octet-stream')

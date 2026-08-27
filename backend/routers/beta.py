@@ -12,6 +12,7 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from analysis.beta_diversity import BetaDiversityAnalyzer
+from observability import ApiError
 
 router = APIRouter(prefix="/api/beta", tags=["beta"])
 
@@ -30,8 +31,8 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
 
     try:
         dm = ProjectManager.get_project_data(request.project_id, 'beta')
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
     try:
         analyzer = BetaDiversityAnalyzer(dm)
@@ -96,8 +97,8 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
             },
             "plotly_spec": plotly_spec,
         }
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
 
 @router.post("/distances")
@@ -109,8 +110,8 @@ async def get_distances(request: BetaRequest) -> Dict[str, Any]:
 
     try:
         dm = ProjectManager.get_project_data(request.project_id, 'beta')
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
     try:
         analyzer = BetaDiversityAnalyzer(dm)
@@ -139,5 +140,5 @@ async def get_distances(request: BetaRequest) -> Dict[str, Any]:
             },
             "plotly_spec": plotly_spec,
         }
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
