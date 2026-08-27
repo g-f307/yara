@@ -47,7 +47,8 @@ yara/
 
 Frontend:
 
-- Next.js 16
+- Node.js 20.19.4 e npm 10.8.2
+- Next.js 16.3.1
 - React 19
 - TypeScript
 - Tailwind CSS
@@ -60,7 +61,7 @@ Frontend:
 
 Backend:
 
-- Python 3.11
+- Python 3.11 (imagem Docker oficial: 3.11.11)
 - FastAPI
 - pandas, NumPy, SciPy e scikit-learn
 - scikit-bio
@@ -201,6 +202,13 @@ Em produção, somente HTTPS é aceito. Em desenvolvimento, HTTP continua sujeit
 
 ## Execução Local
 
+### Runtimes oficiais
+
+O frontend usa Node.js `20.19.4`, definido em `.nvmrc`, e npm `10.8.2`. O
+backend usa Python `3.11`, definido em `.python-version`, com a imagem Docker
+fixada em `python:3.11.11-slim`. Use essas versões também fora do Docker para
+evitar diferenças entre Fedora, Alpine e GitHub Actions.
+
 ### Opção 1: Docker Compose
 
 ```bash
@@ -213,7 +221,6 @@ Serviços esperados:
 - Backend: `http://localhost:8000`
 - Documentação FastAPI: `http://localhost:8000/docs`
 
-Observação: o `docker-compose.yml` atual sobe frontend e backend. O `DATABASE_URL` configurado para o frontend aponta para PostgreSQL, mas o serviço de banco ainda precisa estar disponível separadamente ou ser adicionado ao Compose.
 O `docker-compose.yml` sobe frontend, backend e PostgreSQL. Após alterar o schema Prisma, sincronize o banco dentro do container:
 
 ```bash
@@ -236,8 +243,9 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 Frontend:
 
 ```bash
+nvm use
 cd frontend
-npm install
+npm ci
 npx prisma generate
 npm run dev
 ```
@@ -305,9 +313,71 @@ Resultados esperados:
 - Alpha deve destacar `Amostra10` como outlier em Shannon.
 - Rarefação deve mostrar a profundidade recomendada no card de resultados.
 
+## Qualidade e testes
+
+Execute o mesmo conjunto de verificações usado pela integração contínua antes
+de publicar uma branch.
+
+Frontend:
+
+```bash
+nvm use
+cd frontend
+npm ci
+npm run lint
+npm test
+npm run typecheck
+npm run build
+```
+
+O build executa `prisma generate` automaticamente, não baixa Google Fonts e usa
+dependências nativas opcionais explícitas para Linux GNU (Fedora/Ubuntu/CI) e
+musl (Alpine). Testes e build não devem usar chaves reais. A CI fornece apenas
+placeholders sintéticos nos formatos aceitos pelos SDKs.
+
+Backend:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+python -m pytest
+python -m compileall -q .
+```
+
+Os datasets sintéticos em `backend/tests/data/golden/` cobrem diversidade alfa,
+beta, taxonomia, rarefação, QC e estatística. Comparações científicas usam
+tolerância absoluta `1e-8` e relativa `1e-6`, documentadas junto às fixtures.
+Para executar somente essa camada:
+
+```bash
+cd backend
+python -m pytest -m golden
+```
+
+### Integração contínua
+
+O workflow `.github/workflows/quality.yml` é executado em pull requests para
+`main` e em pushes para `main`. Execuções obsoletas da mesma referência são
+canceladas, caches de npm/pip derivam dos arquivos de dependências e as
+permissões do token ficam restritas à leitura do repositório.
+
+Após o workflow estabilizar, configure em **Settings → Branches → Branch
+protection rules → main** a exigência destes checks:
+
+```text
+frontend-quality
+backend-quality
+scientific-golden
+```
+
+A proteção da branch é uma configuração manual do GitHub e não é alterada por
+este repositório.
+
 ## Próximos Passos
 
-- Consolidar testes automatizados para os endpoints científicos.
+- Ampliar a cobertura automatizada dos endpoints científicos conforme novas análises forem adicionadas.
 - Refinar os templates de relatório para submissão científica.
 - Ampliar o contexto analítico persistente usado pelo assistente.
 - Implementar geração de seção de Métodos e interpretação guiada pós-análise.

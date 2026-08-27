@@ -1,0 +1,5 @@
+Feature ID	Taxon	Confidence	sample-a	sample-b
+feature-1	k__Bacteria; p__Firmicutes; g__Bacillus	0.99	10	4
+feature-2	k__Bacteria; p__Firmicutes; g__Lactobacillus	0.98	5	8
+feature-3	k__Bacteria; p__Proteobacteria; g__Escherichia	0.97	2	12
+feature-4	k__Bacteria; p__; g__Unknown	0.80	1	1

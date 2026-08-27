@@ -331,7 +331,6 @@ export function ChatPanel({
     if (isProjectChange || (initialMessages.length > 0 && messages.length === 0)) {
       setMessages(initialMessages);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, initialMessages]);
 
   const [input, setInput] = useState("")

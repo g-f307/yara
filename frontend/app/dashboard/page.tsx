@@ -9,6 +9,8 @@ import { UserButton } from "@clerk/nextjs"
 import { CreateProjectDialog } from "@/components/create-project-dialog"
 import { DashboardProjectGrid } from "@/components/dashboard-project-grid"
 
+export const dynamic = "force-dynamic"
+
 export default async function DashboardPage() {
   const dbProjects = await getUserProjects();
 
