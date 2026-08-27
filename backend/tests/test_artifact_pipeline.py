@@ -31,6 +31,7 @@ from security.artifact_pipeline import (
     validate_remote_url,
 )
 from routers.qc import QCRequest, qc_summary
+from observability import ApiError
 from utils.project_manager import ProjectManager, _PROJECT_LOCKS, _project_lock
 
 
@@ -406,9 +407,9 @@ class QCArtifactVisibilityTests(unittest.IsolatedAsyncioTestCase):
                 encoding="utf-8",
             )
             with patch("utils.project_manager.CACHE_DIR", temporary):
-                response = await qc_summary(QCRequest(project_id=project_id))
-            self.assertIn("error", response)
-            self.assertNotIn("data", response)
+                with self.assertRaises(ApiError) as raised:
+                    await qc_summary(QCRequest(project_id=project_id))
+            self.assertEqual(raised.exception.code, "ANALYSIS_FAILED")
 
     async def test_qc_uses_registered_valid_table(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -24,6 +24,7 @@ def test_health_check_is_public(api_client) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "yara-python-core"}
+    assert response.headers["x-request-id"]
 
 
 def test_internal_router_rejects_unsigned_request(api_client) -> None:
@@ -33,20 +34,24 @@ def test_internal_router_rejects_unsigned_request(api_client) -> None:
     )
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Requisição não autorizada."}
+    assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+    assert response.json()["error"]["message"] == "Requisição não autorizada."
+    assert response.json()["error"]["request_id"] == response.headers["x-request-id"]
 
 
 def test_router_rejects_invalid_schema(signed_request) -> None:
     response = signed_request("POST", "/api/alpha/analyze", {})
 
     assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
 
 
 def test_project_router_rejects_invalid_identifier(signed_request) -> None:
     response = signed_request("GET", "/api/project/status/not-a-uuid")
 
     assert response.status_code == 400
-    assert response.json() == {"detail": "Identificador de projeto inválido."}
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert response.json()["error"]["message"] == "Identificador de projeto inválido."
 
 
 def test_analytical_routers_preserve_success_contract(
@@ -105,7 +110,7 @@ def test_analytical_routers_preserve_success_contract(
         _assert_plot_contract(signed_request("POST", path, payload))
 
 
-def test_analytical_failure_keeps_null_plot_contract(monkeypatch, signed_request) -> None:
+def test_analytical_failure_uses_public_error_contract(monkeypatch, signed_request) -> None:
     def unavailable(_project_id: str, _data_type: str):
         raise FileNotFoundError("fixture indisponível")
 
@@ -117,6 +122,7 @@ def test_analytical_failure_keeps_null_plot_contract(monkeypatch, signed_request
         {"project_id": PROJECT_ID},
     )
 
-    assert response.status_code == 200
-    assert response.json()["plotly_spec"] is None
-    assert "error" in response.json()
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "ANALYSIS_FAILED"
+    assert response.json()["error"]["message"] == "Não foi possível concluir a análise."
+    assert "fixture indisponível" not in response.text
