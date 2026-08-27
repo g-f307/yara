@@ -30,6 +30,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # O diff de um pull request precisa conhecer o ancestral comum com a
+          # branch base; o checkout padrão contém somente um commit.
+          fetch-depth: 0
 
       - name: Configurar Node.js
         uses: actions/setup-node@v4
