@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import uuid
 
-from observability import ERROR_MESSAGES, error_payload, metrics_snapshot, normalize_request_id
+from fastapi import FastAPI, HTTPException
+from fastapi.testclient import TestClient
+
+from observability import (
+    ERROR_MESSAGES,
+    error_payload,
+    install_exception_handlers,
+    metrics_snapshot,
+    normalize_request_id,
+)
 
 
 VALID_REQUEST_ID = "550e8400-e29b-41d4-a716-446655440000"
@@ -55,3 +64,27 @@ def test_request_metrics_do_not_contain_headers_or_bodies(api_client) -> None:
 def test_normalizer_never_accepts_arbitrary_content() -> None:
     generated = normalize_request_id("../../segredo\nconteudo")
     assert str(uuid.UUID(generated)) == generated
+
+
+def test_http_413_uses_stable_file_too_large_contract() -> None:
+    app = FastAPI()
+    install_exception_handlers(app)
+
+    @app.post("/upload")
+    async def oversized_upload() -> None:
+        raise HTTPException(status_code=413, detail="raw internal detail")
+
+    response = TestClient(app).post(
+        "/upload",
+        headers={"X-Request-ID": VALID_REQUEST_ID},
+    )
+
+    assert response.status_code == 413
+    assert response.headers["x-request-id"] == VALID_REQUEST_ID
+    assert response.json() == {
+        "error": {
+            "code": "FILE_TOO_LARGE",
+            "message": ERROR_MESSAGES["FILE_TOO_LARGE"],
+            "request_id": VALID_REQUEST_ID,
+        }
+    }

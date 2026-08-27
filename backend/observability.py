@@ -214,6 +214,8 @@ def install_exception_handlers(app: FastAPI) -> None:
             code = "AUTH_REQUIRED"
         elif exc.status_code in {403, 404}:
             code = "RESOURCE_NOT_FOUND"
+        elif exc.status_code == 413:
+            code = "FILE_TOO_LARGE"
         elif exc.status_code in {400, 422}:
             code = "INVALID_REQUEST"
         else:
