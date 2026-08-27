@@ -17,6 +17,22 @@ interface ApiResponse<T = unknown> {
     plotly_spec: Record<string, unknown> | null;
 }
 
+interface ApiErrorBody {
+    error?: { code?: string; message?: string; request_id?: string };
+}
+
+export class ApiClientError extends Error {
+    constructor(
+        message: string,
+        readonly code: string,
+        readonly requestId: string,
+        readonly status: number,
+    ) {
+        super(`${message} Identificador de suporte: ${requestId}`);
+        this.name = "ApiClientError";
+    }
+}
+
 async function request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -27,8 +43,19 @@ async function request<T>(
     });
 
     if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`API ${res.status}: ${body}`);
+        let body: ApiErrorBody = {};
+        try {
+            body = await res.json() as ApiErrorBody;
+        } catch {
+            // O cliente nunca inclui o corpo bruto de uma resposta inesperada no erro.
+        }
+        const correlationId = body.error?.request_id ?? res.headers.get("x-request-id") ?? "indisponível";
+        throw new ApiClientError(
+            body.error?.message ?? "O serviço de análise não concluiu a solicitação.",
+            body.error?.code ?? "INTERNAL_ERROR",
+            correlationId,
+            res.status,
+        );
     }
 
     return res.json() as Promise<ApiResponse<T>>;

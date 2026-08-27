@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from analysis.alpha_diversity import AlphaDiversityAnalyzer
+from observability import ApiError
 
 router = APIRouter(prefix="/api/alpha", tags=["alpha"])
 
@@ -30,8 +31,8 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
     
     try:
         df = ProjectManager.get_project_data(request.project_id, 'alpha')
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
         
     # Join metadata if a group column is requested
     if request.group_col:
@@ -63,8 +64,8 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
                 result["comparison"] = comparison
             except Exception as e:
                 result["comparison_error"] = str(e)
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
     # Plotly spec — boxplot por grupo ou geral
     if request.group_col and request.group_col in df.columns:

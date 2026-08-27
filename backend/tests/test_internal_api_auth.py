@@ -265,10 +265,9 @@ class InternalApiAuthMiddlewareTests(unittest.TestCase):
 
         read_body.assert_not_awaited()
         self.assertEqual(status, 401)
-        self.assertEqual(
-            response,
-            {"detail": "Requisição não autorizada."},
-        )
+        self.assertEqual(response["error"]["code"], "AUTH_REQUIRED")
+        self.assertEqual(response["error"]["message"], "Requisição não autorizada.")
+        self.assertEqual(len(response["error"]["request_id"]), 36)
 
     def test_api_accepts_valid_signed_request(self):
         timestamp = 1_700_000_000

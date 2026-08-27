@@ -1,6 +1,7 @@
 import "server-only";
 
 import internalApiAuthCore from "./internal-api-auth-core.cjs";
+import { REQUEST_ID_HEADER, requestId } from "./observability";
 
 const DEFAULT_TIMESTAMP_SECONDS = () => Math.floor(Date.now() / 1000);
 
@@ -43,6 +44,7 @@ export async function internalApiFetch(
     const method = (init.method ?? "GET").toUpperCase();
     const body = internalApiAuthCore.bodyToBuffer(init.body);
     const headers = new Headers(init.headers);
+    headers.set(REQUEST_ID_HEADER, requestId(headers.get(REQUEST_ID_HEADER)));
     const authHeaders = createInternalApiAuthHeaders(
         method,
         targetUrl,

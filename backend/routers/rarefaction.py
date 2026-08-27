@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from analysis.rarefaction import RarefactionAnalyzer
+from observability import ApiError
 
 router = APIRouter(prefix="/api/rarefaction", tags=["rarefaction"])
 
@@ -29,8 +30,8 @@ async def analyze_rarefaction(request: RarefactionRequest) -> Dict[str, Any]:
 
     try:
         df = ProjectManager.get_project_data(request.project_id, 'rarefaction')
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc
 
     try:
         if 'sample-id' in df.columns:
@@ -88,5 +89,5 @@ async def analyze_rarefaction(request: RarefactionRequest) -> Dict[str, Any]:
             },
             "plotly_spec": plotly_spec,
         }
-    except Exception as e:
-        return {"error": str(e), "plotly_spec": None}
+    except Exception as exc:
+        raise ApiError("ANALYSIS_FAILED", 422) from exc

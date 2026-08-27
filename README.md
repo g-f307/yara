@@ -375,6 +375,14 @@ scientific-golden
 A proteção da branch é uma configuração manual do GitHub e não é alterada por
 este repositório.
 
+### Observabilidade operacional
+
+Erros das APIs usam código estável, mensagem pública em PT-BR e um UUID de
+correlação propagado pelo header `X-Request-ID`. Os serviços registram eventos
+JSON correlacionáveis sem corpos, tokens, assinaturas ou URLs completas. Para
+diagnóstico de indisponibilidade, sincronização, análises, armazenamento e
+configuração interna, consulte `docs/RUNBOOK_OBSERVABILIDADE.md`.
+
 ## Próximos Passos
 
 - Ampliar a cobertura automatizada dos endpoints científicos conforme novas análises forem adicionadas.

@@ -21,8 +21,6 @@ export function FileUpload({ compact = false, projectId, onFileSelect }: FileUpl
       <UploadDropzone
         endpoint="dataUploader"
         onClientUploadComplete={async (res) => {
-          console.log("Files uploaded to UploadThing:", res);
-
           if (res && res.length > 0) {
             try {
               if (projectId) {

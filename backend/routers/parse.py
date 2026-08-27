@@ -5,7 +5,7 @@ Parse Router
 POST /api/parse — Validação e parsing de arquivos QIIME 2
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File
 from pydantic import BaseModel
 from typing import Dict, Any, List
 import pandas as pd
@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from analysis.qiime_parser import QIIME2Parser, load_qiime2_data
+from observability import ApiError
 from security.artifact_pipeline import ArtifactSecurityError, read_file_prefix
 
 router = APIRouter(prefix="/api/parse", tags=["parse"])
@@ -70,26 +71,17 @@ async def parse_file(file: UploadFile = File(...)) -> Dict[str, Any]:
     # Validar extensão
     ext = Path(file.filename or "").suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Extensão '{ext}' não suportada. Aceitas: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
+        raise ApiError("UNSUPPORTED_FILE", 400)
 
     # Salvar temporariamente
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
     try:
         content = await file.read()
         if len(content) > MAX_FILE_SIZE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"Arquivo excede o limite de {MAX_FILE_SIZE_BYTES} bytes."
-            )
+            raise ApiError("FILE_TOO_LARGE", 413)
 
         if ext in QIIME_ZIP_EXTENSIONS and not content.startswith(b'PK\x03\x04'):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Arquivo {ext} inválido: o conteúdo não é um ZIP QIIME 2 válido."
-            )
+            raise ApiError("INVALID_FILE", 400)
 
         tmp.write(content)
         tmp.close()
@@ -98,7 +90,7 @@ async def parse_file(file: UploadFile = File(...)) -> Dict[str, Any]:
         df = load_qiime2_data(tmp.name, data_type='auto')
 
         if df is None:
-            raise HTTPException(status_code=422, detail="Não foi possível parsear o arquivo.")
+            raise ApiError("INVALID_FILE", 422)
 
         # Preview
         preview = df.head(10).to_dict(orient='records')
@@ -132,9 +124,10 @@ async def validate_project_data(request: ProjectValidationRequest) -> Dict[str, 
     try:
         project_dir = ProjectManager.get_project_dir(request.project_id)
     except ArtifactSecurityError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="Identificador de projeto inválido.",
+        raise ApiError(
+            "INVALID_REQUEST",
+            400,
+            "Identificador de projeto inválido.",
         ) from exc
     if not project_dir.exists():
         return {

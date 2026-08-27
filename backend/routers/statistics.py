@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional
 import pandas as pd
 
 from analysis.statistics import calculate_kruskal_wallis, calculate_mann_whitney, get_group_stats
+from observability import ApiError
 
 router = APIRouter(prefix="/api/statistics", tags=["statistics"])
 
@@ -41,13 +42,10 @@ async def compare_groups(request: StatisticsRequest) -> Dict[str, Any]:
             meta = ProjectManager.get_project_metadata(request.project_id)
             if meta is not None and request.group_col in meta.columns:
                 df = df.join(meta[[request.group_col]], how='left')
-        except Exception as e:
-            return {"data": {"success": False, "error": str(e)}, "plotly_spec": None}
+        except Exception as exc:
+            raise ApiError("ANALYSIS_FAILED", 422) from exc
     else:
-        return {
-            "data": {"success": False, "error": "Informe data ou project_id para executar a estatística."},
-            "plotly_spec": None,
-        }
+        raise ApiError("INVALID_REQUEST", 422)
 
     metric_col = request.metric_col
     if not metric_col:
@@ -67,16 +65,10 @@ async def compare_groups(request: StatisticsRequest) -> Dict[str, Any]:
             group_col = next((col for col in df.columns if col != metric_col and not pd.api.types.is_numeric_dtype(df[col])), None)
 
     if not group_col or group_col not in df.columns:
-        return {
-            "data": {"success": False, "error": "Coluna de grupos não encontrada. Informe group_col, por exemplo 'Grupo'."},
-            "plotly_spec": None,
-        }
+        raise ApiError("INVALID_REQUEST", 422)
 
     if not metric_col or metric_col not in df.columns:
-        return {
-            "data": {"success": False, "error": "Métrica não encontrada. Informe metric_col, por exemplo 'shannon'."},
-            "plotly_spec": None,
-        }
+        raise ApiError("INVALID_REQUEST", 422)
 
     if request.test == "mann_whitney" and request.group1 and request.group2:
         result = calculate_mann_whitney(
