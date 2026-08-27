@@ -12,6 +12,7 @@ import {
     ResourceNotFoundError,
 } from "@/lib/authorization";
 import { getAlphaDiversity, getBetaDiversity, parseFile, getTaxonomy, getRarefaction, getStatistics, getQCSummary } from "@/lib/actions";
+import { logRequest, publicErrorResponse, REQUEST_ID_HEADER, requestId } from "@/lib/observability";
 
 export const maxDuration = 30; // max 30s Vercel limit
 
@@ -105,6 +106,8 @@ function getRequestedToolNames(text: string): Set<string> {
 }
 
 export async function POST(req: Request) {
+    const started = performance.now();
+    const correlationId = requestId(req.headers.get(REQUEST_ID_HEADER));
     let messages: any[];
     let projectId: string;
 
@@ -114,19 +117,22 @@ export async function POST(req: Request) {
         projectId = body.projectId;
 
         if (!projectId || !Array.isArray(messages)) {
-            return new Response("Requisição inválida.", { status: 400 });
+            logRequest({ requestId: correlationId, method: "POST", path: "/api/chat", status: 400, durationMs: performance.now() - started, errorCode: "INVALID_REQUEST" });
+            return publicErrorResponse("INVALID_REQUEST", "Requisição inválida.", correlationId, 400);
         }
 
         await requireOwnedProject(projectId);
     } catch (error) {
         if (error instanceof AuthenticationRequiredError) {
-            return new Response("Autenticação necessária.", { status: 401 });
+            logRequest({ requestId: correlationId, method: "POST", path: "/api/chat", status: 401, durationMs: performance.now() - started, errorCode: "AUTH_REQUIRED" });
+            return publicErrorResponse("AUTH_REQUIRED", "Autenticação necessária.", correlationId, 401);
         }
         if (error instanceof ResourceNotFoundError) {
-            return new Response("Recurso não encontrado.", { status: 404 });
+            logRequest({ requestId: correlationId, method: "POST", path: "/api/chat", status: 404, durationMs: performance.now() - started, errorCode: "RESOURCE_NOT_FOUND" });
+            return publicErrorResponse("RESOURCE_NOT_FOUND", "Recurso não encontrado.", correlationId, 404);
         }
-        console.error("Failed to authorize chat request:", error);
-        return new Response("Requisição inválida.", { status: 400 });
+        logRequest({ requestId: correlationId, method: "POST", path: "/api/chat", status: 400, durationMs: performance.now() - started, errorCode: "INVALID_REQUEST" });
+        return publicErrorResponse("INVALID_REQUEST", "Requisição inválida.", correlationId, 400);
     }
 
     // systemPrompt will be built after messages are parsed so we can inject resolvedToolNames
@@ -595,9 +601,12 @@ O usuário enviou arquivos ao projeto com ID: ${projectId}.${alreadyCalledSectio
 
         // toUIMessageStreamResponse() is the correct method for AI SDK v6 + DefaultChatTransport
         // It returns a Response with the UI message stream format that useChat expects
-        return result.toUIMessageStreamResponse();
+        const response = result.toUIMessageStreamResponse();
+        response.headers.set("X-Request-ID", correlationId);
+        logRequest({ requestId: correlationId, method: "POST", path: "/api/chat", status: 200, durationMs: performance.now() - started });
+        return response;
     } catch (e: any) {
-        console.error("FATAL ERROR IN AI CHAT STREAM:", e);
-        return new Response(e.message || "Failed to create stream", { status: 500 });
+        logRequest({ requestId: correlationId, method: "POST", path: "/api/chat", status: 500, durationMs: performance.now() - started, errorCode: "INTERNAL_ERROR" });
+        return publicErrorResponse("INTERNAL_ERROR", "Não foi possível iniciar a resposta do assistente.", correlationId, 500);
     }
 }

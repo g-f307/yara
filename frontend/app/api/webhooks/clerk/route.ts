@@ -2,6 +2,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 import { headers } from "next/headers";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
+import { logRequest, publicErrorResponse, REQUEST_ID_HEADER, requestId } from "@/lib/observability";
 
 export const runtime = "nodejs";
 
@@ -42,9 +43,15 @@ function verifySvixSignature(body: string, secret: string, id: string, timestamp
 }
 
 export async function POST(req: NextRequest) {
+  const started = performance.now();
+  const correlationId = requestId(req.headers.get(REQUEST_ID_HEADER));
+  const fail = (code: string, message: string, status: number) => {
+    logRequest({ requestId: correlationId, method: "POST", path: "/api/webhooks/clerk", status, durationMs: performance.now() - started, errorCode: code });
+    return publicErrorResponse(code, message, correlationId, status);
+  };
   const webhookSecret = process.env.CLERK_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    return new Response("CLERK_WEBHOOK_SECRET is not configured", { status: 500 });
+    return fail("INTERNAL_ERROR", "O webhook não está configurado.", 500);
   }
 
   const headerPayload = await headers();
@@ -53,31 +60,36 @@ export async function POST(req: NextRequest) {
   const svixSignature = headerPayload.get("svix-signature");
 
   if (!svixId || !svixTimestamp || !svixSignature) {
-    return new Response("Missing Svix headers", { status: 400 });
+    return fail("INVALID_REQUEST", "Requisição inválida.", 400);
   }
 
   const body = await req.text();
   if (!verifySvixSignature(body, webhookSecret, svixId, svixTimestamp, svixSignature)) {
-    return new Response("Invalid signature", { status: 400 });
+    return fail("INVALID_REQUEST", "Requisição inválida.", 400);
   }
 
-  const event = JSON.parse(body) as ClerkWebhookEvent;
-  if (event.type === "user.created" || event.type === "user.updated") {
-    const { id, email_addresses, first_name, last_name } = event.data;
-    const email = email_addresses?.[0]?.email_address;
+  try {
+    const event = JSON.parse(body) as ClerkWebhookEvent;
+    if (event.type === "user.created" || event.type === "user.updated") {
+      const { id, email_addresses, first_name, last_name } = event.data;
+      const email = email_addresses?.[0]?.email_address;
 
-    if (!email) {
-      return new Response("User email not found", { status: 400 });
+      if (!email) {
+        return fail("INVALID_REQUEST", "Requisição inválida.", 400);
+      }
+
+      const name = [first_name, last_name].filter(Boolean).join(" ") || "Usuario YARA";
+
+      await prisma.user.upsert({
+        where: { clerkId: id },
+        update: { email, name },
+        create: { clerkId: id, email, name },
+      });
     }
-
-    const name = [first_name, last_name].filter(Boolean).join(" ") || "Usuario YARA";
-
-    await prisma.user.upsert({
-      where: { clerkId: id },
-      update: { email, name },
-      create: { clerkId: id, email, name },
-    });
+  } catch {
+    return fail("INTERNAL_ERROR", "Não foi possível processar o webhook.", 500);
   }
 
-  return new Response("OK", { status: 200 });
+  logRequest({ requestId: correlationId, method: "POST", path: "/api/webhooks/clerk", status: 200, durationMs: performance.now() - started });
+  return new Response("OK", { status: 200, headers: { "X-Request-ID": correlationId } });
 }
