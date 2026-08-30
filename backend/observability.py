@@ -27,6 +27,8 @@ ERROR_MESSAGES = {
     "RESOURCE_NOT_FOUND": "Recurso não encontrado.",
     "PROJECT_ACCESS_DENIED": "Recurso não encontrado.",
     "INVALID_FILE": "Arquivo inválido.",
+    "ARTIFACT_NOT_FOUND": "Nenhum artefato compatível foi encontrado.",
+    "AMBIGUOUS_ARTIFACT": "Selecione explicitamente o artefato desejado.",
     "FILE_TOO_LARGE": "O arquivo excede o tamanho permitido.",
     "UNSUPPORTED_FILE": "Formato de arquivo não suportado.",
     "SYNC_FAILED": "Não foi possível sincronizar os arquivos.",

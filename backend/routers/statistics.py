@@ -42,6 +42,8 @@ async def compare_groups(request: StatisticsRequest) -> Dict[str, Any]:
             meta = ProjectManager.get_project_metadata(request.project_id)
             if meta is not None and request.group_col in meta.columns:
                 df = df.join(meta[[request.group_col]], how='left')
+        except ApiError:
+            raise
         except Exception as exc:
             raise ApiError("ANALYSIS_FAILED", 422) from exc
     else:

@@ -409,7 +409,7 @@ class QCArtifactVisibilityTests(unittest.IsolatedAsyncioTestCase):
             with patch("utils.project_manager.CACHE_DIR", temporary):
                 with self.assertRaises(ApiError) as raised:
                     await qc_summary(QCRequest(project_id=project_id))
-            self.assertEqual(raised.exception.code, "ANALYSIS_FAILED")
+            self.assertEqual(raised.exception.code, "ARTIFACT_NOT_FOUND")
 
     async def test_qc_uses_registered_valid_table(self):
         with tempfile.TemporaryDirectory() as temporary:

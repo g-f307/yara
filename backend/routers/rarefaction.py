@@ -30,6 +30,8 @@ async def analyze_rarefaction(request: RarefactionRequest) -> Dict[str, Any]:
 
     try:
         df = ProjectManager.get_project_data(request.project_id, 'rarefaction')
+    except ApiError:
+        raise
     except Exception as exc:
         raise ApiError("ANALYSIS_FAILED", 422) from exc
 

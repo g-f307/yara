@@ -31,6 +31,8 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
     
     try:
         df = ProjectManager.get_project_data(request.project_id, 'alpha')
+    except ApiError:
+        raise
     except Exception as exc:
         raise ApiError("ANALYSIS_FAILED", 422) from exc
         
