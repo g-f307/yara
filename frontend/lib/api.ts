@@ -199,3 +199,23 @@ export async function useDemoData(projectId: string) {
         body: JSON.stringify({ project_id: projectId, files: [] }),
     });
 }
+
+export async function classifyProjectArtifacts(projectId: string) {
+    return request<{ artifacts: any[] }>("/api/artifacts/classify", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId }),
+    });
+}
+
+export async function getArtifactCompatibility(projectId: string) {
+    return request<{ compatibility: any[] }>(
+        `/api/artifacts/compatibility?project_id=${encodeURIComponent(projectId)}`,
+    );
+}
+
+export async function selectProjectArtifact(projectId: string, artifactId: string) {
+    return request<{ artifact: any }>("/api/artifacts/select", {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, artifact_id: artifactId }),
+    });
+}

@@ -23,7 +23,9 @@ const fileIcons: Record<string, string> = {
 }
 
 import { buildReport } from "@/lib/actions"
-import { Suspense, useState, useEffect } from "react"
+import { chooseProjectArtifact } from "@/lib/actions"
+import { Suspense, useState, useEffect, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
 
 import { useResultsStore } from "@/store/use-results-store"
@@ -330,7 +332,45 @@ function ResultsTab({ projectId }: { projectId: string }) {
   )
 }
 
-function FilesTab({ files }: { files: any[] }) {
+const artifactLabels: Record<string, string> = {
+  FEATURE_TABLE: "Tabela de features",
+  TAXONOMY: "Taxonomia",
+  METADATA: "Metadata",
+  PHYLOGENETIC_TREE: "Árvore filogenética",
+  ALPHA_VECTOR: "Diversidade alfa",
+  DISTANCE_MATRIX: "Matriz de distância",
+  PCOA_ORDINATION: "Ordenação PCoA",
+  RAREFACTION_CURVE: "Rarefação",
+  UNKNOWN: "Não identificado",
+}
+
+function FilesTab({ projectId, files, artifacts }: { projectId: string; files: any[]; artifacts: any[] }) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const artifactByFileId = new Map(artifacts.map((artifact) => [artifact.fileId, artifact]))
+  const ambiguousKinds = new Set(
+    artifacts
+      .flatMap((artifact) => [...artifact.sourceCompatibilities, ...artifact.targetCompatibilities])
+      .filter((relation) => relation.status === "AMBIGUOUS")
+      .flatMap((relation) => {
+        const source = artifacts.find((artifact) => artifact.id === relation.sourceArtifactId)
+        const target = artifacts.find((artifact) => artifact.id === relation.targetArtifactId)
+        return [source?.kind, target?.kind].filter(Boolean)
+      }),
+  )
+
+  const selectArtifact = (manifestArtifactId: string) => {
+    startTransition(async () => {
+      const result = await chooseProjectArtifact(projectId, manifestArtifactId)
+      if (!result.success) {
+        toast.error(result.error || "Não foi possível selecionar o artefato.")
+        return
+      }
+      toast.success("Artefato selecionado para as próximas análises.")
+      router.refresh()
+    })
+  }
+
   if (!files || files.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -343,6 +383,10 @@ function FilesTab({ files }: { files: any[] }) {
   return (
     <div className="flex flex-col gap-1">
       {files.map((file) => (
+        (() => {
+        const artifact = artifactByFileId.get(file.id)
+        const ambiguous = artifact && ambiguousKinds.has(artifact.kind)
+        return (
         <div
           key={file.id}
           className="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-muted"
@@ -357,8 +401,35 @@ function FilesTab({ files }: { files: any[] }) {
             <p className="text-[11px] text-muted-foreground">
               {(file.size / 1024 / 1024).toFixed(1)} MB — {new Date(file.createdAt).toLocaleDateString("pt-BR")}
             </p>
+            {artifact && (
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px]">
+                <span className={cn(
+                  "rounded px-1.5 py-0.5 font-medium",
+                  artifact.kind === "UNKNOWN" ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
+                )}>
+                  {artifactLabels[artifact.kind] || artifact.kind}
+                </span>
+                <span className="text-muted-foreground">
+                  confiança {Math.round(artifact.confidence * 100)}%
+                </span>
+                {artifact.semanticType && <span className="text-muted-foreground">{artifact.semanticType}</span>}
+                {artifact.selected && <span className="text-emerald-600 dark:text-emerald-400">selecionado</span>}
+              </div>
+            )}
           </div>
+          {artifact && ambiguous && !artifact.selected && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 shrink-0 text-[11px]"
+              disabled={isPending}
+              onClick={() => selectArtifact(artifact.manifestArtifactId)}
+            >
+              Usar este
+            </Button>
+          )}
         </div>
+        )})()
       ))}
     </div>
   )
@@ -493,7 +564,7 @@ function ReportTab({ projectId }: { projectId: string }) {
   );
 }
 
-export function ResultsPanel({ className, projectId, files = [], sessions = [] }: { className?: string; projectId: string; files?: any[]; sessions?: any[] }) {
+export function ResultsPanel({ className, projectId, files = [], artifacts = [], sessions = [] }: { className?: string; projectId: string; files?: any[]; artifacts?: any[]; sessions?: any[] }) {
   const activeTab = useResultsStore((state: any) => 
     ['files', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
   );
@@ -537,7 +608,7 @@ export function ResultsPanel({ className, projectId, files = [], sessions = [] }
                <ReportTab projectId={projectId} />
             </TabsContent>
             <TabsContent value="files" className="mt-0">
-              <FilesTab files={files} />
+              <FilesTab projectId={projectId} files={files} artifacts={artifacts} />
             </TabsContent>
             <TabsContent value="history" className="mt-0">
               <HistoryTab sessions={sessions} />

@@ -16,7 +16,8 @@ from security.artifact_pipeline import (
     normalize_project_id,
     safe_project_dir,
 )
-from observability import record_failure
+from artifacts.catalog import ArtifactCatalogError, SemanticCatalog
+from observability import ApiError, record_failure
 
 CACHE_DIR = os.getenv("STORAGE_PATH", "./uploads")
 _PROJECT_LOCKS: dict[str, tuple[asyncio.Lock, int]] = {}
@@ -162,69 +163,39 @@ class ProjectManager:
     def get_project_data(project_id: str, data_type: str):
         from analysis.qiime_parser import load_qiime2_data
 
-        files = ProjectManager._valid_files(project_id, {".tsv", ".qzv", ".qza"})
-        if not files:
-            raise FileNotFoundError(
-                "Os arquivos válidos do projeto ainda não foram sincronizados."
+        try:
+            file_path = SemanticCatalog(CACHE_DIR).select_path(project_id, data_type)
+        except ArtifactCatalogError as exc:
+            status_code = 409 if exc.code == "AMBIGUOUS_ARTIFACT" else 404
+            raise ApiError(exc.code, status_code, exc.public_message) from exc
+        dataframe = load_qiime2_data(str(file_path), data_type=data_type)
+        if dataframe is None or dataframe.empty:
+            raise ArtifactCatalogError(
+                "ARTIFACT_NOT_FOUND",
+                f"O artefato selecionado não contém dados válidos para {data_type}.",
             )
-
-        def is_likely_type(df, requested_type: str) -> bool:
-            if df is None or df.empty:
-                return False
-            lower_cols = [str(column).lower() for column in df.columns]
-            if requested_type == "alpha":
-                return any(
-                    column
-                    in {
-                        "shannon",
-                        "observed_features",
-                        "faith_pd",
-                        "chao1",
-                        "pielou_e",
-                        "simpson",
-                    }
-                    for column in lower_cols
-                )
-            if requested_type == "beta":
-                return df.shape[0] == df.shape[1] and df.shape[0] > 1
-            if requested_type == "taxonomy":
-                return any("taxon" in column or "taxa" in column for column in lower_cols)
-            if requested_type == "rarefaction":
-                return any(column.isdigit() for column in lower_cols)
-            return True
-
-        for file_path in files:
-            try:
-                dataframe = load_qiime2_data(str(file_path), data_type=data_type)
-                if is_likely_type(dataframe, data_type):
-                    return dataframe
-            except (ValueError, OSError):
-                continue
-
-        raise ValueError(
-            f"Não foram encontrados dados válidos para a análise de {data_type}."
-        )
+        return dataframe
 
     @staticmethod
     def get_project_metadata(project_id: str):
         import pandas as pd
 
-        files = ProjectManager._valid_files(project_id, {".tsv"})
-        for file_path in files:
-            try:
-                dataframe = pd.read_csv(file_path, sep="\t")
-                sample_column = next(
-                    (
-                        column
-                        for column in dataframe.columns
-                        if column.lower()
-                        in {"sample-id", "sampleid", "id", "#sampleid"}
-                    ),
-                    None,
-                )
-                if sample_column:
-                    dataframe = dataframe.set_index(sample_column)
-                return dataframe
-            except (ValueError, OSError):
-                continue
-        return None
+        try:
+            file_path = SemanticCatalog(CACHE_DIR).select_path(project_id, "metadata")
+        except ArtifactCatalogError as exc:
+            if exc.code == "ARTIFACT_NOT_FOUND":
+                return None
+            raise ApiError(exc.code, 409, exc.public_message) from exc
+        try:
+            dataframe = pd.read_csv(file_path, sep="\t")
+        except (ValueError, OSError):
+            return None
+        sample_column = next(
+            (
+                column
+                for column in dataframe.columns
+                if column.lower() in {"sample-id", "sampleid", "id", "#sampleid"}
+            ),
+            None,
+        )
+        return dataframe.set_index(sample_column) if sample_column else dataframe

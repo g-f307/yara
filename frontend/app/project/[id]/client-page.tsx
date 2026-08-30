@@ -24,10 +24,11 @@ interface ProjectLayoutClientProps {
     projects: SidebarProject[];
     initialMessages?: any[];
     projectFiles?: any[];
+    projectArtifacts?: any[];
     projectSessions?: any[];
 }
 
-export default function ProjectLayoutClient({ projectId, projects, initialMessages, projectFiles, projectSessions }: ProjectLayoutClientProps) {
+export default function ProjectLayoutClient({ projectId, projects, initialMessages, projectFiles, projectArtifacts, projectSessions }: ProjectLayoutClientProps) {
     const router = useRouter();
     const resetStore = useResultsStore((state: any) => state.reset);
     const currentProject = projects.find(p => p.id === projectId);
@@ -103,7 +104,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                         </SheetTrigger>
                         <SheetContent side="right" className="p-0 w-full sm:w-[480px]">
                             <SheetTitle className="sr-only">Painel de Resultados</SheetTitle>
-                            <ResultsPanel projectId={projectId} files={projectFiles} sessions={projectSessions} />
+                            <ResultsPanel projectId={projectId} files={projectFiles} artifacts={projectArtifacts} sessions={projectSessions} />
                         </SheetContent>
                     </Sheet>
                 ) : (
@@ -133,7 +134,7 @@ export default function ProjectLayoutClient({ projectId, projects, initialMessag
                                     </ResizablePanel>
                                     <ResizableHandle className="w-1.5 hover:bg-primary/20 transition-colors" />
                                     <ResizablePanel defaultSize={55} minSize={40}>
-                                        <ResultsPanel projectId={projectId} files={projectFiles} sessions={projectSessions} />
+                                        <ResultsPanel projectId={projectId} files={projectFiles} artifacts={projectArtifacts} sessions={projectSessions} />
                                     </ResizablePanel>
                                 </ResizablePanelGroup>
                             </div>

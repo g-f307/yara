@@ -383,6 +383,12 @@ JSON correlacionáveis sem corpos, tokens, assinaturas ou URLs completas. Para
 diagnóstico de indisponibilidade, sincronização, análises, armazenamento e
 configuração interna, consulte `docs/RUNBOOK_OBSERVABILIDADE.md`.
 
+### Catálogo semântico
+
+Arquivos aprovados pelo pipeline seguro são classificados pelo conteúdo antes
+de uma análise. Ambiguidades exigem escolha explícita no painel Files. Consulte
+`docs/CATALOGO_ARTEFATOS.md` para arquitetura, contratos, migração e rollback.
+
 ## Próximos Passos
 
 - Ampliar a cobertura automatizada dos endpoints científicos conforme novas análises forem adicionadas.

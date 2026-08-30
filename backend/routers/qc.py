@@ -102,6 +102,8 @@ async def qc_summary(request: QCRequest) -> Dict[str, Any]:
 
             df = pd.DataFrame(inferred_rows)
             source = "Inferido das curvas de rarefação"
+        except ApiError:
+            raise
         except Exception:
             raise ApiError("ANALYSIS_FAILED", 422)
     else:

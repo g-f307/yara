@@ -31,6 +31,8 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
 
     try:
         dm = ProjectManager.get_project_data(request.project_id, 'beta')
+    except ApiError:
+        raise
     except Exception as exc:
         raise ApiError("ANALYSIS_FAILED", 422) from exc
 
@@ -110,6 +112,8 @@ async def get_distances(request: BetaRequest) -> Dict[str, Any]:
 
     try:
         dm = ProjectManager.get_project_data(request.project_id, 'beta')
+    except ApiError:
+        raise
     except Exception as exc:
         raise ApiError("ANALYSIS_FAILED", 422) from exc
 

@@ -57,6 +57,8 @@ async def taxonomy_summary(request: TaxonomyRequest) -> Dict[str, Any]:
 
     try:
         df = ProjectManager.get_project_data(request.project_id, 'taxonomy')
+    except ApiError:
+        raise
     except Exception as exc:
         raise ApiError("ANALYSIS_FAILED", 422) from exc
 
@@ -160,6 +162,8 @@ async def taxonomy_barplot(request: BarplotRequest) -> Dict[str, Any]:
 
     try:
         df = ProjectManager.get_project_data(request.project_id, 'taxonomy')
+    except ApiError:
+        raise
     except Exception as exc:
         raise ApiError("ANALYSIS_FAILED", 422) from exc
 
