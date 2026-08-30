@@ -130,7 +130,7 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 
 // Analytics actions
 
-import { analyzeAlpha, computePCoA, taxonomyBarplot, analyzeRarefaction, syncProjectFiles, compareStatistics, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
+import { analyzeAlpha, classifyProjectArtifacts, computePCoA, getArtifactCompatibility, taxonomyBarplot, analyzeRarefaction, selectProjectArtifact, syncProjectFiles, compareStatistics, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
 
 function withStats(plotlySpec: any, stats: any) {
     if (!plotlySpec || typeof plotlySpec !== "object") return plotlySpec;
@@ -417,6 +417,127 @@ export async function getProjectFiles(projectId: string) {
         return { success: true, files };
     } catch (e: any) {
         return { success: false, files: [], error: e.message };
+    }
+}
+
+async function persistArtifactCatalog(projectId: string) {
+    const project = await requireOwnedProjectWithFiles(projectId);
+    // A compatibilidade relê o catálogo derivado. A sequência evita que duas
+    // classificações disputem o mesmo arquivo temporário no backend.
+    const { data: catalog } = await classifyProjectArtifacts(project.id);
+    const { data: compatibility } = await getArtifactCompatibility(project.id);
+    const fileByName = new Map(project.files.map((file) => [file.name, file.id]));
+    const manifestIds = catalog.artifacts.map((artifact) => artifact.id);
+
+    await prisma.$transaction(async (transaction) => {
+        await transaction.artifact.deleteMany({
+            where: {
+                projectId: project.id,
+                manifestArtifactId: { notIn: manifestIds },
+            },
+        });
+        for (const artifact of catalog.artifacts) {
+            await transaction.artifact.upsert({
+                where: { manifestArtifactId: artifact.id },
+                create: {
+                    manifestArtifactId: artifact.id,
+                    projectId: project.id,
+                    fileId: fileByName.get(artifact.original_name),
+                    physicalName: artifact.physical_name,
+                    sha256: artifact.sha256,
+                    size: artifact.size,
+                    extension: artifact.extension,
+                    status: artifact.status,
+                    kind: artifact.kind,
+                    semanticType: artifact.semantic_type,
+                    format: artifact.format,
+                    qiimeUuid: artifact.qiime_uuid,
+                    qiimeVersion: artifact.qiime_version,
+                    classifierVersion: artifact.classifier_version,
+                    confidence: artifact.confidence,
+                    selected: artifact.selected,
+                    metadataJson: artifact.metadata,
+                },
+                update: {
+                    fileId: fileByName.get(artifact.original_name),
+                    physicalName: artifact.physical_name,
+                    sha256: artifact.sha256,
+                    size: artifact.size,
+                    extension: artifact.extension,
+                    status: artifact.status,
+                    kind: artifact.kind,
+                    semanticType: artifact.semantic_type,
+                    format: artifact.format,
+                    qiimeUuid: artifact.qiime_uuid,
+                    qiimeVersion: artifact.qiime_version,
+                    classifierVersion: artifact.classifier_version,
+                    confidence: artifact.confidence,
+                    selected: artifact.selected,
+                    metadataJson: artifact.metadata,
+                    classifiedAt: new Date(),
+                },
+            });
+        }
+
+        await transaction.artifactCompatibility.deleteMany({ where: { projectId: project.id } });
+        const persisted = await transaction.artifact.findMany({ where: { projectId: project.id } });
+        const databaseIdByManifestId = new Map(
+            persisted.map((artifact) => [artifact.manifestArtifactId, artifact.id]),
+        );
+        for (const relation of compatibility.compatibility) {
+            const sourceArtifactId = databaseIdByManifestId.get(relation.source_artifact_id);
+            const targetArtifactId = databaseIdByManifestId.get(relation.target_artifact_id);
+            if (!sourceArtifactId || !targetArtifactId) continue;
+            await transaction.artifactCompatibility.create({
+                data: {
+                    projectId: project.id,
+                    sourceArtifactId,
+                    targetArtifactId,
+                    status: relation.status,
+                    reasonCode: relation.reason_code,
+                    reasonMessage: relation.reason_message,
+                },
+            });
+        }
+    });
+}
+
+export async function getProjectArtifacts(projectId: string) {
+    try {
+        const project = await requireOwnedProject(projectId);
+        await persistArtifactCatalog(project.id);
+        const artifacts = await prisma.artifact.findMany({
+            where: { projectId: project.id },
+            include: {
+                sourceCompatibilities: true,
+                targetCompatibilities: true,
+            },
+            orderBy: [{ kind: "asc" }, { createdAt: "asc" }],
+        });
+        return {
+            success: true,
+            artifacts: artifacts.map(({ physicalName: _physicalName, metadataJson: _metadataJson, ...artifact }) => artifact),
+        };
+    } catch (error: any) {
+        console.error("Failed to refresh artifact catalog:", error);
+        return { success: false, artifacts: [], error: error.message };
+    }
+}
+
+export async function chooseProjectArtifact(projectId: string, manifestArtifactId: string) {
+    try {
+        const project = await requireOwnedProject(projectId);
+        const artifact = await prisma.artifact.findFirst({
+            where: { projectId: project.id, manifestArtifactId },
+        });
+        if (!artifact) throw new Error("Artefato não encontrado no projeto.");
+        await selectProjectArtifact(project.id, artifact.manifestArtifactId);
+        await persistArtifactCatalog(project.id);
+        revalidatePath(`/project/${project.id}`);
+        return { success: true };
+    } catch (error: any) {
+        console.error("Failed to select project artifact:", error);
+        return { success: false, error: error.message };
     }
 }
 
