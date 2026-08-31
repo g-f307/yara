@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import artifacts, parse, alpha, beta, taxonomy, rarefaction, statistics, reports, project, qc
+from routers import artifacts, metadata, parse, alpha, beta, taxonomy, rarefaction, statistics, reports, project, qc
 from security.internal_api_auth import (
     InternalApiAuthMiddleware,
     validate_internal_api_configuration,
@@ -63,6 +63,7 @@ app.include_router(reports.router)
 app.include_router(project.router)
 app.include_router(qc.router)
 app.include_router(artifacts.router)
+app.include_router(metadata.router)
 
 
 @app.get("/health")

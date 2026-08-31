@@ -40,7 +40,12 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
     if request.group_col:
         meta = ProjectManager.get_project_metadata(request.project_id)
         if meta is not None and request.group_col in meta.columns:
+            metadata_version_id = meta.attrs.get("metadata_version_id")
             df = df.join(meta[[request.group_col]], how='left')
+        else:
+            metadata_version_id = None
+    else:
+        metadata_version_id = None
 
     try:
         analyzer = AlphaDiversityAnalyzer(df)
@@ -54,6 +59,7 @@ async def analyze_alpha(request: AlphaRequest) -> Dict[str, Any]:
             "interpretation": interpretation,
             "metric": request.metric,
             "n_samples": len(df),
+            "metadata_version_id": metadata_version_id,
         }
 
         outliers = analyzer.detect_outliers(request.metric)
