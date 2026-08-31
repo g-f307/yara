@@ -219,3 +219,42 @@ export async function selectProjectArtifact(projectId: string, artifactId: strin
         body: JSON.stringify({ project_id: projectId, artifact_id: artifactId }),
     });
 }
+
+export async function getMetadataWorkspace(projectId: string) {
+    return request<any>(`/api/metadata/versions?project_id=${encodeURIComponent(projectId)}`);
+}
+
+export async function validateMetadataVersion(payload: {
+    project_id: string;
+    template_id: string;
+    columns: string[];
+    rows: Record<string, unknown>[];
+}) {
+    return request<any>("/api/metadata/validate", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function createMetadataVersion(payload: {
+    project_id: string;
+    artifact_id: string;
+    parent_version_id: string | null;
+    template_id: string;
+    columns: string[];
+    rows: Record<string, unknown>[];
+    created_by_user_id: string;
+    confirmed: boolean;
+}) {
+    return request<any>("/api/metadata/versions", {
+        method: "POST",
+        body: JSON.stringify(payload),
+    });
+}
+
+export async function restoreMetadataVersion(projectId: string, versionId: string, userId: string) {
+    return request<any>(`/api/metadata/versions/${encodeURIComponent(versionId)}/restore`, {
+        method: "POST",
+        body: JSON.stringify({ project_id: projectId, created_by_user_id: userId }),
+    });
+}
