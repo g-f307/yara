@@ -1,4 +1,4 @@
-import { getProjectArtifacts, getProjectMetadataWorkspace, getUserProjects, getProjectSession, getProjectFiles, getProjectSessions } from "@/lib/actions"
+import { getProjectAnalysisRuns, getProjectArtifacts, getProjectMetadataWorkspace, getUserProjects, getProjectSession, getProjectFiles, getProjectSessions } from "@/lib/actions"
 import ProjectLayoutClient from "./client-page"
 import { SidebarProject } from "@/components/project-sidebar"
 import { syncProjectFiles } from "@/lib/api"
@@ -44,11 +44,12 @@ export default async function ProjectPage({
   }
 
   // Fetch past chat session and project files/history in parallel
-  const [filesResult, artifactsResult, sessionsResult, sessionResult] = await Promise.all([
+  const [filesResult, artifactsResult, sessionsResult, sessionResult, runsResult] = await Promise.all([
     getProjectFiles(projectId),
     getProjectArtifacts(projectId),
     getProjectSessions(projectId),
-    getProjectSession(projectId)
+    getProjectSession(projectId),
+    getProjectAnalysisRuns(projectId)
   ]);
 
   const initialMessages = sessionResult.success ? sessionResult.messages : [];
@@ -64,5 +65,6 @@ export default async function ProjectPage({
     projectArtifacts={artifactsResult.success ? artifactsResult.artifacts : []}
     metadataWorkspace={metadataResult.success && metadataResult.available ? metadataResult.workspace : null}
     projectSessions={sessionsResult.success ? sessionsResult.sessions : []}
+    analysisRuns={runsResult.success ? runsResult.runs : []}
   />
 }
