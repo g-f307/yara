@@ -397,6 +397,14 @@ exige preview e confirmação antes de criar uma revisão; restaurações não
 sobrescrevem o histórico. Consulte `docs/METADATA_MIXS_MIMARKS.md` para regras,
 score, contratos, migração e limitações.
 
+### Execuções científicas reproduzíveis
+
+As novas análises são registradas como `AnalysisRun`: entradas e hashes, versão
+de metadata, parâmetros, seed, versões de software, resultado ou falha pública
+e vínculo de reprodução. Runs terminalizadas são protegidas contra sobrescrita
+no serviço e no PostgreSQL. Consulte `docs/ANALYSIS_RUNS.md` para estados,
+rotas, regras de imutabilidade, reprodução, migration e rollback.
+
 ## Próximos Passos
 
 - Ampliar a cobertura automatizada dos endpoints científicos conforme novas análises forem adicionadas.
