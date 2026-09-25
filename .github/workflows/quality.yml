@@ -27,6 +27,20 @@ jobs:
       CLERK_SECRET_KEY: sk_test_ci-only-placeholder
       PYTHON_CORE_URL: http://localhost:8000
       YARA_INTERNAL_API_SECRET: ci-only-secret-with-at-least-32-chars
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: yara
+          POSTGRES_PASSWORD: yara
+          POSTGRES_DB: yara
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yara -d yara"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,6 +64,11 @@ jobs:
 
       - name: Testes unitários
         run: npm test
+
+      - name: Validar migrations e imutabilidade de AnalysisRun
+        run: |
+          npx prisma migrate deploy
+          npm run test:migration
 
       - name: Typecheck
         run: npm run typecheck
