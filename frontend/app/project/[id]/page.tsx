@@ -1,4 +1,4 @@
-import { getProjectArtifacts, getUserProjects, getProjectSession, getProjectFiles, getProjectSessions } from "@/lib/actions"
+import { getProjectArtifacts, getProjectMetadataWorkspace, getUserProjects, getProjectSession, getProjectFiles, getProjectSessions } from "@/lib/actions"
 import ProjectLayoutClient from "./client-page"
 import { SidebarProject } from "@/components/project-sidebar"
 import { syncProjectFiles } from "@/lib/api"
@@ -52,6 +52,9 @@ export default async function ProjectPage({
   ]);
 
   const initialMessages = sessionResult.success ? sessionResult.messages : [];
+  const metadataResult = artifactsResult.success
+    ? await getProjectMetadataWorkspace(projectId)
+    : { success: false, available: false, workspace: null };
 
   return <ProjectLayoutClient 
     projectId={projectId} 
@@ -59,6 +62,7 @@ export default async function ProjectPage({
     initialMessages={initialMessages} 
     projectFiles={filesResult.success ? filesResult.files : []}
     projectArtifacts={artifactsResult.success ? artifactsResult.artifacts : []}
+    metadataWorkspace={metadataResult.success && metadataResult.available ? metadataResult.workspace : null}
     projectSessions={sessionsResult.success ? sessionsResult.sessions : []}
   />
 }

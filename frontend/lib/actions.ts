@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { auth, currentUser } from "@clerk/nextjs/server";
 import {
+    requireAuthenticatedDbUser,
     requireOwnedProject,
     requireOwnedProjectWithFiles,
     requireProjectFile,
@@ -130,7 +131,7 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 
 // Analytics actions
 
-import { analyzeAlpha, classifyProjectArtifacts, computePCoA, getArtifactCompatibility, taxonomyBarplot, analyzeRarefaction, selectProjectArtifact, syncProjectFiles, compareStatistics, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
+import { analyzeAlpha, classifyProjectArtifacts, computePCoA, createMetadataVersion, getArtifactCompatibility, getMetadataWorkspace, restoreMetadataVersion, taxonomyBarplot, analyzeRarefaction, selectProjectArtifact, syncProjectFiles, compareStatistics, validateMetadataVersion, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
 
 function withStats(plotlySpec: any, stats: any) {
     if (!plotlySpec || typeof plotlySpec !== "object") return plotlySpec;
@@ -537,6 +538,176 @@ export async function chooseProjectArtifact(projectId: string, manifestArtifactI
         return { success: true };
     } catch (error: any) {
         console.error("Failed to select project artifact:", error);
+        return { success: false, error: error.message };
+    }
+}
+
+async function persistMetadataWorkspace(projectId: string, workspace: any) {
+    const project = await requireOwnedProject(projectId);
+    const artifactIds = [...new Set(workspace.versions.map((version: any) => version.artifact_id))] as string[];
+    const artifacts = await prisma.artifact.findMany({
+        where: { projectId: project.id, manifestArtifactId: { in: artifactIds } },
+    });
+    const artifactByManifestId = new Map(artifacts.map((artifact) => [artifact.manifestArtifactId, artifact.id]));
+
+    await prisma.$transaction(async (transaction) => {
+        for (const template of workspace.templates) {
+            await transaction.metadataTemplate.upsert({
+                where: { id: template.id },
+                create: {
+                    id: template.id,
+                    name: template.name,
+                    description: template.description,
+                    version: template.version,
+                },
+                update: {
+                    name: template.name,
+                    description: template.description,
+                    version: template.version,
+                },
+            });
+            await transaction.metadataTemplateField.deleteMany({ where: { templateId: template.id } });
+            if (template.fields.length > 0) {
+                await transaction.metadataTemplateField.createMany({
+                    data: template.fields.map((field: any, position: number) => ({
+                        templateId: template.id,
+                        name: field.name,
+                        description: field.description,
+                        dataType: field.data_type,
+                        unit: field.unit,
+                        requirement: field.requirement,
+                        vocabularyJson: field.vocabulary,
+                        position,
+                    })),
+                });
+            }
+        }
+
+        const backendToDatabaseId = new Map<string, string>();
+        for (const version of workspace.versions) {
+            const artifactId = artifactByManifestId.get(version.artifact_id);
+            if (!artifactId) throw new Error("A versão de metadata não pertence a um artefato autorizado do projeto.");
+            const parentVersionId = version.parent_version_id
+                ? backendToDatabaseId.get(version.parent_version_id) ?? null
+                : null;
+            const stored = await transaction.metadataVersion.upsert({
+                where: { backendVersionId: version.id },
+                create: {
+                    backendVersionId: version.id,
+                    projectId: project.id,
+                    artifactId,
+                    parentVersionId,
+                    sha256: version.sha256,
+                    schemaJson: version.schema,
+                    source: version.source,
+                    templateId: version.template_id,
+                    templateVersion: version.template_version,
+                    createdByUserId: version.created_by_user_id,
+                    active: version.id === workspace.active_version_id,
+                    createdAt: new Date(version.created_at),
+                },
+                update: {
+                    active: version.id === workspace.active_version_id,
+                    parentVersionId,
+                },
+            });
+            backendToDatabaseId.set(version.id, stored.id);
+        }
+
+        await transaction.metadataVersion.updateMany({
+            where: { projectId: project.id, backendVersionId: { not: workspace.active_version_id } },
+            data: { active: false },
+        });
+        const activeDatabaseId = backendToDatabaseId.get(workspace.active_version_id);
+        if (activeDatabaseId) {
+            await transaction.metadataValidation.deleteMany({ where: { metadataVersionId: activeDatabaseId } });
+            const diagnostics = workspace.validation?.diagnostics ?? [];
+            if (diagnostics.length > 0) {
+                await transaction.metadataValidation.createMany({
+                    data: diagnostics.map((diagnostic: any) => ({
+                        metadataVersionId: activeDatabaseId,
+                        rulesVersion: workspace.validation.rules_version,
+                        severity: diagnostic.severity,
+                        code: diagnostic.code,
+                        columnName: diagnostic.column_name,
+                        affectedSamplesJson: diagnostic.affected_samples,
+                        message: diagnostic.message,
+                        suggestion: diagnostic.suggestion,
+                    })),
+                });
+            }
+        }
+    });
+}
+
+function publicMetadataWorkspace(workspace: any) {
+    return {
+        ...workspace,
+        versions: workspace.versions.map(({ physical_name: _physicalName, ...version }: any) => version),
+    };
+}
+
+export async function getProjectMetadataWorkspace(projectId: string) {
+    try {
+        const project = await requireOwnedProject(projectId);
+        await persistArtifactCatalog(project.id);
+        const { data: workspace } = await getMetadataWorkspace(project.id);
+        await persistMetadataWorkspace(project.id, workspace);
+        return { success: true, available: true, workspace: publicMetadataWorkspace(workspace) };
+    } catch (error: any) {
+        if (["METADATA_NOT_FOUND", "AMBIGUOUS_ARTIFACT"].includes(error.code)) {
+            return { success: true, available: false, workspace: null, error: error.message };
+        }
+        console.error("Failed to load metadata workspace:", error);
+        return { success: false, available: false, workspace: null, error: error.message };
+    }
+}
+
+export async function previewProjectMetadata(projectId: string, templateId: string, columns: string[], rows: Record<string, unknown>[]) {
+    try {
+        const project = await requireOwnedProject(projectId);
+        const { data } = await validateMetadataVersion({ project_id: project.id, template_id: templateId, columns, rows });
+        return { success: true, preview: data };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function confirmProjectMetadataVersion(projectId: string, artifactManifestId: string, parentVersionId: string | null, templateId: string, columns: string[], rows: Record<string, unknown>[]) {
+    try {
+        const project = await requireOwnedProject(projectId);
+        const user = await requireAuthenticatedDbUser();
+        const artifact = await prisma.artifact.findFirst({ where: { projectId: project.id, manifestArtifactId: artifactManifestId, kind: "METADATA" } });
+        if (!artifact) throw new Error("Artefato de metadata não encontrado no projeto.");
+        const { data } = await createMetadataVersion({
+            project_id: project.id,
+            artifact_id: artifact.manifestArtifactId,
+            parent_version_id: parentVersionId,
+            template_id: templateId,
+            columns,
+            rows,
+            created_by_user_id: user.id,
+            confirmed: true,
+        });
+        await persistMetadataWorkspace(project.id, data.workspace);
+        revalidatePath(`/project/${project.id}`);
+        return { success: true, workspace: publicMetadataWorkspace(data.workspace) };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function restoreProjectMetadataVersion(projectId: string, backendVersionId: string) {
+    try {
+        const project = await requireOwnedProject(projectId);
+        const user = await requireAuthenticatedDbUser();
+        const version = await prisma.metadataVersion.findFirst({ where: { projectId: project.id, backendVersionId } });
+        if (!version) throw new Error("Versão de metadata não encontrada no projeto.");
+        const { data } = await restoreMetadataVersion(project.id, version.backendVersionId, user.id);
+        await persistMetadataWorkspace(project.id, data.workspace);
+        revalidatePath(`/project/${project.id}`);
+        return { success: true, workspace: publicMetadataWorkspace(data.workspace) };
+    } catch (error: any) {
         return { success: false, error: error.message };
     }
 }

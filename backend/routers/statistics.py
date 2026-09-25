@@ -40,6 +40,7 @@ async def compare_groups(request: StatisticsRequest) -> Dict[str, Any]:
         try:
             df = ProjectManager.get_project_data(request.project_id, 'alpha')
             meta = ProjectManager.get_project_metadata(request.project_id)
+            metadata_version_id = meta.attrs.get("metadata_version_id") if meta is not None else None
             if meta is not None and request.group_col in meta.columns:
                 df = df.join(meta[[request.group_col]], how='left')
         except ApiError:
@@ -48,6 +49,9 @@ async def compare_groups(request: StatisticsRequest) -> Dict[str, Any]:
             raise ApiError("ANALYSIS_FAILED", 422) from exc
     else:
         raise ApiError("INVALID_REQUEST", 422)
+
+    if request.data:
+        metadata_version_id = None
 
     metric_col = request.metric_col
     if not metric_col:
@@ -108,4 +112,5 @@ async def compare_groups(request: StatisticsRequest) -> Dict[str, Any]:
         },
     }
 
+    result["metadata_version_id"] = metadata_version_id
     return {"data": result, "plotly_spec": plotly_spec}

@@ -44,6 +44,7 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
         # Construir traces Plotly
         if request.group_col:
             meta_df = ProjectManager.get_project_metadata(request.project_id)
+            metadata_version_id = meta_df.attrs.get("metadata_version_id") if meta_df is not None else None
             if meta_df is not None and request.group_col in meta_df.columns:
                 merged = coords.join(meta_df[[request.group_col]], how='left')
                 groups = merged[request.group_col].unique().tolist()
@@ -71,6 +72,7 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
                     "marker": {"size": 10},
                 }]
         else:
+            metadata_version_id = None
             traces = [{
                 "type": "scatter",
                 "mode": "markers+text",
@@ -96,6 +98,7 @@ async def compute_pcoa(request: BetaRequest) -> Dict[str, Any]:
             "data": {
                 "coordinates": coords.reset_index().to_dict(orient='records'),
                 "distance_stats": stats,
+                "metadata_version_id": metadata_version_id,
             },
             "plotly_spec": plotly_spec,
         }

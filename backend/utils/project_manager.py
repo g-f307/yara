@@ -17,6 +17,7 @@ from security.artifact_pipeline import (
     safe_project_dir,
 )
 from artifacts.catalog import ArtifactCatalogError, SemanticCatalog
+from metadata.service import MetadataError, MetadataService
 from observability import ApiError, record_failure
 
 CACHE_DIR = os.getenv("STORAGE_PATH", "./uploads")
@@ -181,11 +182,21 @@ class ProjectManager:
         import pandas as pd
 
         try:
-            file_path = SemanticCatalog(CACHE_DIR).select_path(project_id, "metadata")
-        except ArtifactCatalogError as exc:
-            if exc.code == "ARTIFACT_NOT_FOUND":
+            service = MetadataService(CACHE_DIR)
+            version = service.ensure_initial_version(project_id)
+            validation = service.validate(project_id, template_id=version.template_id)
+            if not validation["readiness"]["ready"]:
+                raise ApiError(
+                    "METADATA_NOT_READY",
+                    422,
+                    "A metadata possui bloqueios. Revise os diagnósticos antes da análise.",
+                )
+            file_path = service.version_path(project_id, version)
+        except MetadataError as exc:
+            if exc.code == "METADATA_NOT_FOUND":
                 return None
-            raise ApiError(exc.code, 409, exc.public_message) from exc
+            status_code = 409 if exc.code == "AMBIGUOUS_ARTIFACT" else 404
+            raise ApiError(exc.code, status_code, exc.public_message) from exc
         try:
             dataframe = pd.read_csv(file_path, sep="\t")
         except (ValueError, OSError):
@@ -198,4 +209,7 @@ class ProjectManager:
             ),
             None,
         )
-        return dataframe.set_index(sample_column) if sample_column else dataframe
+        dataframe = dataframe.set_index(sample_column) if sample_column else dataframe
+        dataframe.attrs["metadata_version_id"] = version.id
+        dataframe.attrs["metadata_rules_version"] = validation["rules_version"]
+        return dataframe

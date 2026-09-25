@@ -389,6 +389,14 @@ Arquivos aprovados pelo pipeline seguro são classificados pelo conteúdo antes
 de uma análise. Ambiguidades exigem escolha explícita no painel Files. Consulte
 `docs/CATALOGO_ARTEFATOS.md` para arquitetura, contratos, migração e rollback.
 
+### Metadata MIxS/MIMARKS
+
+Metadata selecionada é copiada para um histórico imutável, validada contra
+perfis orientativos MIxS/MIMARKS e vinculada às análises por versão. A interface
+exige preview e confirmação antes de criar uma revisão; restaurações não
+sobrescrevem o histórico. Consulte `docs/METADATA_MIXS_MIMARKS.md` para regras,
+score, contratos, migração e limitações.
+
 ## Próximos Passos
 
 - Ampliar a cobertura automatizada dos endpoints científicos conforme novas análises forem adicionadas.

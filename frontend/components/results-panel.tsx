@@ -27,6 +27,7 @@ import { chooseProjectArtifact } from "@/lib/actions"
 import { Suspense, useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { PlotlyPlot } from "@/components/plots/plotly-plot"
+import { MetadataWorkspace } from "@/components/metadata-workspace"
 
 import { useResultsStore } from "@/store/use-results-store"
 
@@ -564,9 +565,9 @@ function ReportTab({ projectId }: { projectId: string }) {
   );
 }
 
-export function ResultsPanel({ className, projectId, files = [], artifacts = [], sessions = [] }: { className?: string; projectId: string; files?: any[]; artifacts?: any[]; sessions?: any[] }) {
+export function ResultsPanel({ className, projectId, files = [], artifacts = [], metadataWorkspace = null, sessions = [] }: { className?: string; projectId: string; files?: any[]; artifacts?: any[]; metadataWorkspace?: any; sessions?: any[] }) {
   const activeTab = useResultsStore((state: any) => 
-    ['files', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
+    ['files', 'metadata', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
   );
   const setActiveTab = useResultsStore((state: any) => state.setActiveTab);
   const pendingNotifications = useResultsStore((state: any) => state.pendingNotifications);
@@ -594,6 +595,9 @@ export function ResultsPanel({ className, projectId, files = [], artifacts = [],
             <TabsTrigger value="files" className="flex-1">
               Files
             </TabsTrigger>
+            <TabsTrigger value="metadata" className="flex-1">
+              Metadata
+            </TabsTrigger>
             <TabsTrigger value="history" className="flex-1">
               History
             </TabsTrigger>
@@ -609,6 +613,9 @@ export function ResultsPanel({ className, projectId, files = [], artifacts = [],
             </TabsContent>
             <TabsContent value="files" className="mt-0">
               <FilesTab projectId={projectId} files={files} artifacts={artifacts} />
+            </TabsContent>
+            <TabsContent value="metadata" className="mt-0">
+              <MetadataWorkspace projectId={projectId} initialWorkspace={metadataWorkspace} />
             </TabsContent>
             <TabsContent value="history" className="mt-0">
               <HistoryTab sessions={sessions} />
