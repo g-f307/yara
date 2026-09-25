@@ -20,6 +20,7 @@ model User {
   name             String?
   projects         Project[]
   metadataVersions MetadataVersion[]
+  analysisRuns     AnalysisRun[]
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 }
@@ -36,6 +37,7 @@ model Project {
   artifacts               Artifact[]
   artifactCompatibilities ArtifactCompatibility[]
   metadataVersions        MetadataVersion[]
+  analysisRuns            AnalysisRun[]
   createdAt               DateTime                @default(now())
   updatedAt               DateTime                @updatedAt
 
@@ -140,6 +142,7 @@ model MetadataVersion {
   createdByUser    User?                @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
   active           Boolean              @default(false)
   validations      MetadataValidation[]
+  analysisRuns     AnalysisRun[]
   createdAt        DateTime
 
   @@index([projectId, createdAt])
@@ -230,4 +233,49 @@ model AnalysisSummary {
   createdAt  DateTime @default(now())
 
   @@index([projectId])
+}
+
+enum AnalysisRunState {
+  REQUESTED
+  VALIDATING
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+model AnalysisRun {
+  id                   String           @id @default(uuid())
+  projectId            String
+  project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requestedByUserId    String
+  requestedByUser      User             @relation(fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  parentRunId          String?
+  parentRun            AnalysisRun?     @relation("AnalysisRunReproduction", fields: [parentRunId], references: [id], onDelete: SetNull)
+  reproducedRuns       AnalysisRun[]    @relation("AnalysisRunReproduction")
+  method               String
+  state                AnalysisRunState @default(REQUESTED)
+  inputManifestJson    Json
+  metadataVersionId    String?
+  metadataVersion      MetadataVersion? @relation(fields: [metadataVersionId], references: [id], onDelete: SetNull)
+  parametersJson       Json
+  softwareVersionsJson Json
+  seed                 Int?
+  resultJson           Json?
+  outputManifestJson   Json?
+  errorCode            String?
+  errorMessage         String?
+  requestId            String
+  requestedAt          DateTime         @default(now())
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@index([projectId, requestedAt])
+  @@index([projectId, state])
+  @@index([parentRunId])
+  @@index([metadataVersionId])
+  @@index([requestedByUserId])
 }

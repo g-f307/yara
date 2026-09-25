@@ -12,6 +12,7 @@
     "start": "next start -p 3001",
     "lint": "eslint . --max-warnings=0",
     "test": "node --test lib/*.test.cjs",
+    "test:migration": "node scripts/test-analysis-run-migration.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -22,7 +22,7 @@ const fileIcons: Record<string, string> = {
   ".qza": "text-sky-600 dark:text-sky-400",
 }
 
-import { buildReport } from "@/lib/actions"
+import { buildReport, reproduceProjectAnalysis } from "@/lib/actions"
 import { chooseProjectArtifact } from "@/lib/actions"
 import { Suspense, useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
@@ -436,8 +436,10 @@ function FilesTab({ projectId, files, artifacts }: { projectId: string; files: a
   )
 }
 
-function HistoryTab({ sessions }: { sessions: any[] }) {
-  if (!sessions || sessions.length === 0) {
+function HistoryTab({ projectId, sessions, runs }: { projectId: string; sessions: any[]; runs: any[] }) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  if ((!sessions || sessions.length === 0) && (!runs || runs.length === 0)) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <Clock className="size-8 mb-2 opacity-20" />
@@ -447,7 +449,39 @@ function HistoryTab({ sessions }: { sessions: any[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-4">
+      <section>
+        <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Execuções científicas</h3>
+        {runs?.map((run) => (
+          <div key={run.id} className="mb-1 rounded-lg border border-border px-3 py-2.5">
+            <div className="flex items-start gap-3">
+              <Clock className="mt-0.5 size-4 text-primary" />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-medium text-foreground">{run.method}</p>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", run.state === "SUCCEEDED" ? "bg-emerald-500/10 text-emerald-600" : run.state === "FAILED" ? "bg-red-500/10 text-red-600" : "bg-amber-500/10 text-amber-600")}>{run.state}</span>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{new Date(run.requestedAt).toLocaleString("pt-BR", { timeZone: "America/Manaus" })} · {run.id.slice(0, 8)}</p>
+                {run.parentRunId && <p className="mt-1 text-[11px] text-muted-foreground">Reprodução de {run.parentRunId.slice(0, 8)}</p>}
+                {run.metadataVersion && <p className="text-[11px] text-muted-foreground">Metadata {run.metadataVersion.backendVersionId.slice(0, 8)} · SHA {run.metadataVersion.sha256.slice(0, 10)}</p>}
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-muted-foreground">Parâmetros e entradas</summary>
+                  <pre className="mt-2 max-h-48 overflow-auto rounded bg-muted p-2 text-[10px]">{JSON.stringify({ parameters: run.parametersJson, inputs: run.inputManifestJson }, null, 2)}</pre>
+                </details>
+              </div>
+              {["SUCCEEDED", "FAILED"].includes(run.state) && (
+                <Button size="sm" variant="outline" disabled={isPending} onClick={() => startTransition(async () => {
+                  const result = await reproduceProjectAnalysis(projectId, run.id)
+                  if (result.success) { toast.success(`Reprodução criada: ${result.runId?.slice(0, 8)}`); router.refresh() }
+                  else toast.error(result.error || "Não foi possível reproduzir a execução.")
+                })}>Reproduzir</Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </section>
+      <section>
+        <h3 className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sessões de conversa</h3>
       {sessions.map((entry) => (
         <div
           key={entry.id}
@@ -461,7 +495,7 @@ function HistoryTab({ sessions }: { sessions: any[] }) {
               Sessão de Análise
             </p>
             <p className="text-[11px] text-muted-foreground">
-              {new Date(entry.createdAt).toLocaleString("pt-BR")}
+              {new Date(entry.createdAt).toLocaleString("pt-BR", { timeZone: "America/Manaus" })}
             </p>
             <p className="mt-1 text-xs text-muted-foreground leading-relaxed truncate">
               ID: {entry.id}
@@ -469,6 +503,7 @@ function HistoryTab({ sessions }: { sessions: any[] }) {
           </div>
         </div>
       ))}
+      </section>
     </div>
   )
 }
@@ -565,7 +600,7 @@ function ReportTab({ projectId }: { projectId: string }) {
   );
 }
 
-export function ResultsPanel({ className, projectId, files = [], artifacts = [], metadataWorkspace = null, sessions = [] }: { className?: string; projectId: string; files?: any[]; artifacts?: any[]; metadataWorkspace?: any; sessions?: any[] }) {
+export function ResultsPanel({ className, projectId, files = [], artifacts = [], metadataWorkspace = null, sessions = [], runs = [] }: { className?: string; projectId: string; files?: any[]; artifacts?: any[]; metadataWorkspace?: any; sessions?: any[]; runs?: any[] }) {
   const activeTab = useResultsStore((state: any) => 
     ['files', 'metadata', 'history', 'report', 'results'].includes(state.activeTab) ? state.activeTab : 'results'
   );
@@ -618,7 +653,7 @@ export function ResultsPanel({ className, projectId, files = [], artifacts = [],
               <MetadataWorkspace projectId={projectId} initialWorkspace={metadataWorkspace} />
             </TabsContent>
             <TabsContent value="history" className="mt-0">
-              <HistoryTab sessions={sessions} />
+              <HistoryTab projectId={projectId} sessions={sessions} runs={runs} />
             </TabsContent>
           </div>
         </div>

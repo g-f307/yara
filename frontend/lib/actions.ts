@@ -11,6 +11,7 @@ import {
     requireProjectFile,
 } from "@/lib/authorization";
 import { internalApiFetch } from "@/lib/internal-api-auth";
+import { executeAnalysisRun, getOwnedAnalysisRun, listOwnedAnalysisRuns, type AnalysisMethod } from "@/lib/analysis-runs";
 
 export async function getUserProjects() {
     try {
@@ -131,11 +132,29 @@ export async function createProjectFile(projectId: string, fileData: { name: str
 
 // Analytics actions
 
-import { analyzeAlpha, classifyProjectArtifacts, computePCoA, createMetadataVersion, getArtifactCompatibility, getMetadataWorkspace, restoreMetadataVersion, taxonomyBarplot, analyzeRarefaction, selectProjectArtifact, syncProjectFiles, compareStatistics, validateMetadataVersion, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
+import { analyzeAlpha, classifyProjectArtifacts, computePCoA, createMetadataVersion, getArtifactCompatibility, getDistances, getMetadataWorkspace, restoreMetadataVersion, taxonomyBarplot, taxonomySummary, analyzeRarefaction, selectProjectArtifact, syncProjectFiles, compareStatistics, validateMetadataVersion, validateProjectData as apiValidateProjectData, useDemoData, qcSummary } from "./api";
 
 function withStats(plotlySpec: any, stats: any) {
     if (!plotlySpec || typeof plotlySpec !== "object") return plotlySpec;
     return { ...plotlySpec, _stats: stats ?? null };
+}
+
+async function trackedAnalysis(
+    projectId: string,
+    method: AnalysisMethod,
+    parameters: Record<string, unknown>,
+    execute: () => Promise<any>,
+    parentRunId?: string,
+) {
+    const tracked = await executeAnalysisRun({ projectId, method, parameters, parentRunId, seed: method === "beta_pcoa" ? 42 : null, execute });
+    const result: any = tracked.response;
+    if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
+    return {
+        success: true,
+        runId: tracked.runId,
+        data: withStats(result.plotly_spec, { ...result.data, analysis_run_id: tracked.runId }),
+        stats: { ...result.data, analysis_run_id: tracked.runId },
+    };
 }
 
 async function ensureBackendSynched(projectId: string) {
@@ -202,28 +221,22 @@ export async function activateDemoMode(projectId: string) {
     }
 }
 
-export async function getAlphaDiversity(projectId: string, metric: string, groupCol?: string) {
+export async function getAlphaDiversity(projectId: string, metric: string, groupCol?: string): Promise<any> {
     try {
         const project = await ensureBackendSynched(projectId);
 
-        const result: any = await analyzeAlpha(project.id, metric, groupCol || "group");
-        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
-
-        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+        return await trackedAnalysis(project.id, "alpha", { metric, group_col: groupCol || "group" }, () => analyzeAlpha(project.id, metric, groupCol || "group"));
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
     }
 }
 
-export async function getBetaDiversity(projectId: string, groupCol?: string) {
+export async function getBetaDiversity(projectId: string, groupCol?: string): Promise<any> {
     try {
         const project = await ensureBackendSynched(projectId);
 
-        const result: any = await computePCoA(project.id, groupCol || "group");
-        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
-
-        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+        return await trackedAnalysis(project.id, "beta_pcoa", { group_col: groupCol || "group" }, () => computePCoA(project.id, groupCol || "group"));
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
@@ -248,28 +261,22 @@ export async function parseFile(projectId: string, fileId: string) {
     }
 }
 
-export async function getTaxonomy(projectId: string, level: string = "Phylum") {
+export async function getTaxonomy(projectId: string, level: string = "Phylum"): Promise<any> {
     try {
         const project = await ensureBackendSynched(projectId);
 
-        const result: any = await taxonomyBarplot(project.id, level);
-        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
-
-        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+        return await trackedAnalysis(project.id, "taxonomy_barplot", { level, top_n: 10 }, () => taxonomyBarplot(project.id, level));
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
     }
 }
 
-export async function getRarefaction(projectId: string) {
+export async function getRarefaction(projectId: string): Promise<any> {
     try {
         const project = await ensureBackendSynched(projectId);
 
-        const result: any = await analyzeRarefaction(project.id);
-        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
-
-        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+        return await trackedAnalysis(project.id, "rarefaction", { max_samples: 20 }, () => analyzeRarefaction(project.id));
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
@@ -283,31 +290,88 @@ export async function getStatistics(
     test: "kruskal" | "mann_whitney" = "kruskal",
     group1?: string,
     group2?: string
-) {
+): Promise<any> {
     try {
         const project = await ensureBackendSynched(projectId);
 
-        const result: any = await compareStatistics(project.id, groupCol, metricCol, test, group1, group2);
-        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
-
-        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+        return await trackedAnalysis(project.id, "statistics", { group_col: groupCol, metric_col: metricCol, test, group1, group2 }, () => compareStatistics(project.id, groupCol, metricCol, test, group1, group2));
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
     }
 }
 
-export async function getQCSummary(projectId: string) {
+export async function getQCSummary(projectId: string): Promise<any> {
     try {
         const project = await ensureBackendSynched(projectId);
 
-        const result: any = await qcSummary(project.id);
-        if (result.error || result.data?.error) throw new Error(result.error || result.data.error);
-
-        return { success: true, data: withStats(result.plotly_spec, result.data), stats: result.data };
+        return await trackedAnalysis(project.id, "qc", {}, () => qcSummary(project.id));
     } catch (e: any) {
         console.error(e);
         return { success: false, error: e.message };
+    }
+}
+
+async function executeMethod(projectId: string, method: AnalysisMethod, parameters: Record<string, any>) {
+    switch (method) {
+        case "alpha":
+            return analyzeAlpha(projectId, parameters.metric ?? "shannon", parameters.group_col);
+        case "beta_pcoa":
+            return computePCoA(projectId, parameters.group_col);
+        case "beta_distances":
+            return getDistances(projectId);
+        case "taxonomy_summary":
+            return taxonomySummary(projectId, parameters.level ?? "Phylum", parameters.top_n ?? 10);
+        case "taxonomy_barplot":
+            return taxonomyBarplot(projectId, parameters.level ?? "Phylum", parameters.top_n ?? 10);
+        case "rarefaction":
+            return analyzeRarefaction(projectId, parameters.max_samples ?? 20);
+        case "statistics":
+            return compareStatistics(projectId, parameters.group_col, parameters.metric_col, parameters.test ?? "kruskal", parameters.group1, parameters.group2);
+        case "qc":
+            return qcSummary(projectId);
+    }
+}
+
+export async function requestProjectAnalysis(projectId: string, method: AnalysisMethod, parameters: Record<string, unknown> = {}, parentRunId?: string): Promise<any> {
+    try {
+        const project = await ensureBackendSynched(projectId);
+        return await trackedAnalysis(project.id, method, parameters, () => executeMethod(project.id, method, parameters), parentRunId);
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+export async function getProjectAnalysisRuns(projectId: string) {
+    try {
+        const runs = await listOwnedAnalysisRuns(projectId);
+        return { success: true, runs };
+    } catch (error: any) {
+        return { success: false, runs: [], error: error.message };
+    }
+}
+
+export async function getProjectAnalysisRun(projectId: string, runId: string) {
+    try {
+        const run = await getOwnedAnalysisRun(projectId, runId);
+        if (!run) throw new Error("Execução não encontrada neste projeto.");
+        return { success: true, run };
+    } catch (error: any) {
+        return { success: false, run: null, error: error.message };
+    }
+}
+
+export async function reproduceProjectAnalysis(projectId: string, runId: string, parameters?: Record<string, unknown>): Promise<any> {
+    try {
+        const original = await getOwnedAnalysisRun(projectId, runId);
+        if (!original) throw new Error("Execução original não encontrada neste projeto.");
+        if (original.state !== "SUCCEEDED" && original.state !== "FAILED") {
+            throw new Error("Somente execuções finalizadas podem ser reproduzidas.");
+        }
+        const nextParameters = parameters ?? original.parametersJson as Record<string, unknown>;
+        return await requestProjectAnalysis(projectId, original.method as AnalysisMethod, nextParameters, original.id);
+    } catch (error: any) {
+        return { success: false, error: error.message };
     }
 }
 
@@ -743,7 +807,13 @@ export async function buildReport(projectId: string, format: "pdf" | "docx", ite
         if (!project) throw new Error("Project not found");
 
         let summaries: any[] = [];
+        let completedRuns: any[] = [];
         try {
+            completedRuns = await prisma.analysisRun.findMany({
+                where: { projectId: ownedProject.id, state: "SUCCEEDED" },
+                orderBy: { requestedAt: "desc" },
+                select: { method: true, id: true },
+            });
             summaries = await (prisma as any).analysisSummary.findMany({
                 where: { projectId: ownedProject.id },
                 orderBy: { createdAt: "desc" },
@@ -758,7 +828,7 @@ export async function buildReport(projectId: string, format: "pdf" | "docx", ite
                 `Projeto: ${project.name}`,
                 `Arquivos analisados: ${project.files.length > 0 ? project.files.map((file: any) => file.name).join(", ") : "nenhum arquivo registrado no banco"}`,
                 `Sessões de análise: ${project._count.sessions}`,
-                `Análises realizadas: ${summaries.length > 0 ? summaries.map((summary: any) => summary.type).join(", ") : "sem histórico analítico estruturado"}`,
+                `Análises realizadas: ${completedRuns.length > 0 ? completedRuns.map((run: any) => `${run.method} (${run.id.slice(0, 8)})`).join(", ") : summaries.length > 0 ? summaries.map((summary: any) => summary.type).join(", ") : "sem histórico analítico estruturado"}`,
                 `Data de exportação: ${new Date().toLocaleDateString("pt-BR")}`,
             ].join("\n"),
             level: 2,
