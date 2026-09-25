@@ -22,6 +22,23 @@ async function proxyToPythonCore(req: NextRequest, context: RouteContext) {
   }
 
   const { path } = await context.params;
+  const backendPath = `/${path.join("/")}`;
+  const trackedAnalysisPaths = new Set([
+    "/api/alpha/analyze",
+    "/api/beta/pcoa",
+    "/api/beta/distances",
+    "/api/taxonomy/summary",
+    "/api/taxonomy/barplot",
+    "/api/rarefaction/analyze",
+    "/api/statistics/compare",
+    "/api/qc/summary",
+  ]);
+  if (req.method === "POST" && trackedAnalysisPaths.has(backendPath)) {
+    return NextResponse.json(
+      errorPayload("ANALYSIS_RUN_REQUIRED", "Use /api/runs para executar uma análise rastreável.", correlationId),
+      { status: 409, headers: { "X-Request-ID": correlationId } },
+    );
+  }
   const backendUrl = process.env.PYTHON_CORE_URL || "http://localhost:8000";
   const targetUrl = new URL(`/${path.join("/")}${req.nextUrl.search}`, backendUrl);
 
